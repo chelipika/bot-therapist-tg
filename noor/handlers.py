@@ -1,13 +1,18 @@
 import json
 import os
+from aiogram import F, Bot
 from aiogram.filters import CommandStart, Command
-from aiogram.types import Message
+from aiogram.types import Message, LabeledPrice, PreCheckoutQuery
 from aiogram import Router
 import google.generativeai as genai
 from config import GEMINI_API_KEY
 from datetime import datetime, timedelta
 from collections import defaultdict
-from instructions import INSTRUCTIONS_OF_AI
+from noor.instructions import INSTRUCTIONS_OF_AI
+from config import TOKEN
+bot = Bot(token=TOKEN)
+
+
 # File to store chat history
 CHAT_HISTORY_FILE = "chat_history.json"
 
@@ -68,6 +73,12 @@ class UserLimitManager:
         last_reset = self.user_limits[user_id]['last_reset']
         if datetime.now() - last_reset > timedelta(days=1):
             self.user_limits[user_id] = {'count': 0, 'last_reset': datetime.now()}
+    def funded_limites(self, user_id):
+        user_id = str(user_id)
+        x = int(self.user_limits[user_id]['count'])
+        y = self.user_limits[user_id]['last_reset']
+        self.user_limits[user_id] = {'count': x-10, 'last_reset': y}
+
 
     async def use_limit(self, user_id):
         user_id = str(user_id)
@@ -90,13 +101,45 @@ model = genai.GenerativeModel(
 )
 
 router = Router()
-limit_manager = UserLimitManager(max_daily_limit=100)
+limit_manager = UserLimitManager(max_daily_limit=10)
 hi_message = '''🧠 EN: Welcome to your personal AI psychologist! I provide confidential, empathetic support to help you navigate emotions, challenges, and personal growth. Together, we'll explore your inner world safely and constructively. Ready to begin? 💆‍♀️
 
 🌿 RU: Привет! Я твой личный психолог-ИИ! Предоставляю конфиденциальную поддержку, помогаю разобраться в эмоциях и личностном развитии. Вместе мы безопасно исследуем твой внутренний мир. Готов начать? 🤝'''
 @router.message(CommandStart())
 async def start(message: Message):
-    await message.answer(f"Hi\Привет {message.from_user.full_name}\n {hi_message} {message.from_user.}")
+    x = await bot.get_star_transactions()
+
+    await message.answer(f"Hi\Привет {message.from_user.full_name}\n {hi_message}, \n {x}")
+
+
+###
+@router.message(Command('fund'))
+async def start(message: Message):
+    await message.answer_invoice(
+        title="Extend limits",
+        description="Your going to extend you limit by 10 additional tries",
+        payload='fundup_limits',
+        currency="XTR",
+        prices=[LabeledPrice(label="XTR", amount=1)]
+    )
+    link = await bot.create_chat_invite_link(-1002306237533, name="test this is name test of successful payment", member_limit=1)
+
+    await message.answer(link.invite_link)
+
+@router.pre_checkout_query()
+async def pre_checkout_handler(event: PreCheckoutQuery):
+    await event.answer(True)
+
+
+@router.message(F.successful_payment)
+async def successful_payment(message: Message):
+    user_id = str(message.from_user.id)
+    await bot.refund_star_payment(message.from_user.id, message.successful_payment.telegram_payment_charge_id)
+
+    limit_manager.funded_limites(user_id=user_id)
+    await message.answer("Your stuff has been updated😍")
+###
+
 
 
 @router.message(Command('history'))
@@ -130,45 +173,47 @@ async def end_current_start_new(message: Message):
 
 @router.message()
 async def the_text(message: Message):
-    user_id = str(message.from_user.id)  # Convert to string for JSON compatibility
-    can_proceed, remaining_limits, reset_time = await limit_manager.use_limit(user_id)
+    if message.text is not None:
 
-    if not can_proceed:
-        reset_time_str = reset_time.strftime("%Y-%m-%d %H:%M:%S")
-        await message.reply(f"⛔️ You've reached your daily limit. Limits reset at: {reset_time_str} \n ⛔️ Вы использовали все сегодняшние попытки. Лимит перезагрузится в: {reset_time_str}")
-        return
+        user_id = str(message.from_user.id)  # Convert to string for JSON compatibility
+        can_proceed, remaining_limits, reset_time = await limit_manager.use_limit(user_id)
 
-    sent_message = await message.answer("Processing...")
+        if not can_proceed:
+            reset_time_str = reset_time.strftime("%Y-%m-%d %H:%M:%S")
+            await message.reply(f"⛔️ You've reached your daily limit. Limits reset at: {reset_time_str} \n ⛔️ Вы использовали все сегодняшние попытки. Лимит перезагрузится в: {reset_time_str}")
+            return
 
-    # Ensure user history exists
-    if user_id not in user_chat_histories:
-        user_chat_histories[user_id] = []
+        sent_message = await message.answer("Processing...")
 
-    # Add user message to history
-    user_chat_histories[user_id].append({
-        "role": "user",
-        "parts": [{"text": message.text}]
-    })
-    save_chat_history()
+        # Ensure user history exists
+        if user_id not in user_chat_histories:
+            user_chat_histories[user_id] = []
 
-    # Generate AI response
-    chat_session = model.start_chat(history=user_chat_histories[user_id])
-    response = chat_session.send_message(message.text)
+        # Add user message to history
+        user_chat_histories[user_id].append({
+            "role": "user",
+            "parts": [{"text": message.text}]
+        })
+        save_chat_history()
 
-    response_text = response.text
+        # Generate AI response
+        chat_session = model.start_chat(history=user_chat_histories[user_id])
+        response = chat_session.send_message(message.text)
 
-    # Save AI response to history
-    user_chat_histories[user_id].append({
-        "role": "model",
-        "parts": [{"text": response_text}]
-    })
-    save_chat_history()
+        response_text = response.text
 
-    # Send response to user
-    text = ""
-    for chunk in response:  # Normal for-loop
-        text += chunk.text
-        await sent_message.edit_text(text)
+        # Save AI response to history
+        user_chat_histories[user_id].append({
+            "role": "model",
+            "parts": [{"text": response_text}]
+        })
+        save_chat_history()
+
+        # Send response to user
+        text = ""
+        for chunk in response:  # Normal for-loop
+            text += chunk.text
+            await sent_message.edit_text(text)
 
 
-    await message.reply(f"✅ Command processed! {remaining_limits} uses remaining today.\n ✅ Запрос успешен! {remaining_limits} Попыток на сегодня.")
+        await message.reply(f"✅ Command processed! {remaining_limits} uses remaining today.\n ✅ Запрос успешен! {remaining_limits} Попыток на сегодня.")
