@@ -7,6 +7,9 @@ from noor.handlers import router
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
+
+
+
 async def main():
     print("BOT start polling.....")
     dp.include_router(router=router)
