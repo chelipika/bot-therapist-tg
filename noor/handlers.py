@@ -107,9 +107,7 @@ hi_message = '''🧠 EN: Welcome to your personal AI psychologist! I provide con
 🌿 RU: Привет! Я твой личный психолог-ИИ! Предоставляю конфиденциальную поддержку, помогаю разобраться в эмоциях и личностном развитии. Вместе мы безопасно исследуем твой внутренний мир. Готов начать? 🤝'''
 @router.message(CommandStart())
 async def start(message: Message):
-    x = await bot.get_star_transactions()
-
-    await message.answer(f"Hi\Привет {message.from_user.full_name}\n {hi_message}, \n {x}")
+    await message.answer(f"Hi\Привет {message.from_user.full_name}\n {hi_message}")
 
 
 ###
