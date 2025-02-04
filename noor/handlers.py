@@ -2,7 +2,7 @@ import json
 import os
 from aiogram import F, Bot
 from aiogram.filters import CommandStart, Command
-from aiogram.types import Message, LabeledPrice, PreCheckoutQuery
+from aiogram.types import Message, LabeledPrice, PreCheckoutQuery, CallbackQuery
 from aiogram import Router
 import google.generativeai as genai
 from config import GEMINI_API_KEY
@@ -11,6 +11,7 @@ from collections import defaultdict
 from noor.instructions import INSTRUCTIONS_OF_AI
 from config import TOKEN
 bot = Bot(token=TOKEN)
+import noor.keyboards as kb
 
 
 # File to store chat history
@@ -101,15 +102,58 @@ model = genai.GenerativeModel(
 )
 
 router = Router()
-limit_manager = UserLimitManager(max_daily_limit=10)
+limit_manager = UserLimitManager(max_daily_limit=20)
 hi_message = '''🧠 EN: Welcome to your personal AI psychologist! I provide confidential, empathetic support to help you navigate emotions, challenges, and personal growth. Together, we'll explore your inner world safely and constructively. Ready to begin? 💆‍♀️
 
 🌿 RU: Привет! Я твой личный психолог-ИИ! Предоставляю конфиденциальную поддержку, помогаю разобраться в эмоциях и личностном развитии. Вместе мы безопасно исследуем твой внутренний мир. Готов начать? 🤝'''
 @router.message(CommandStart())
 async def start(message: Message):
-    await message.answer(f"Hi\Привет {message.from_user.full_name}\n {hi_message}")
+    await message.answer(f"Hi\Привет {message.from_user.full_name}\n {hi_message}", reply_markup=kb.settings)
 
 
+@router.callback_query(F.data == 'history_callback')
+async def history_callback(callback: CallbackQuery):
+    await callback.answer("History: show")
+    user_id = str(callback.from_user.id)
+    
+    if user_id not in user_chat_histories or not user_chat_histories[user_id]:
+        await callback.message.answer("📜 No chat history found.", reply_markup=kb.back_to_main)
+        return
+
+    history_text = "\n\n".join(
+        f"{entry['role'].capitalize()}: {entry['parts'][0]['text']}"
+        for entry in user_chat_histories[user_id]
+    )
+
+    await callback.message.edit_text(f"📜 Chat History:\n\n{history_text}", reply_markup=kb.back_to_main)
+    
+@router.callback_query(F.data == "fundup")
+async def fundup(callback: CallbackQuery):
+    await callback.answer("Proccesing...")
+    await callback.message.answer_invoice(
+        title="Extend limits",
+        description="Your going to extend you limit by 10 additional tries",
+        payload='fundup_limits',
+        currency="XTR",
+        prices=[LabeledPrice(label="XTR", amount=1)]
+    )
+
+@router.callback_query(F.data == "back")
+async def back(callback: CallbackQuery):
+    await callback.message.edit_text(hi_message, reply_markup=kb.settings)
+@router.message(Command('setupprofile'))
+async def set_up_profile(message: Message):
+    await message.answer("How should you call me?")
+    user_id = message.from_user.id
+    data = {
+            user_id: {
+                'nameOfAi': message.text,
+                'usersName': None
+            }
+        }
+    with open('userProfiles.json', 'w') as f:
+        json.dump(data, f)
+    
 ###
 @router.message(Command('fund'))
 async def start(message: Message):
@@ -120,9 +164,6 @@ async def start(message: Message):
         currency="XTR",
         prices=[LabeledPrice(label="XTR", amount=1)]
     )
-    link = await bot.create_chat_invite_link(-1002306237533, name="test this is name test of successful payment", member_limit=1)
-
-    await message.answer(link.invite_link)
 
 @router.pre_checkout_query()
 async def pre_checkout_handler(event: PreCheckoutQuery):
@@ -135,7 +176,7 @@ async def successful_payment(message: Message):
     await bot.refund_star_payment(message.from_user.id, message.successful_payment.telegram_payment_charge_id)
 
     limit_manager.funded_limites(user_id=user_id)
-    await message.answer("Your stuff has been updated😍")
+    await message.answer("Your stuff has been updated😍", reply_markup=kb.back_to_main)
 ###
 
 
