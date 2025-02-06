@@ -8,7 +8,7 @@ main = ReplyKeyboardMarkup(keyboard=[
 
 settings = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="History", callback_data="history_callback"), InlineKeyboardButton(text="Fund up", callback_data="fundup")],
-    [InlineKeyboardButton(text="Profile", url="https://t.me/notesworth/50")]
+    [InlineKeyboardButton(text="Profile", callback_data="profile")]
 ])
 
 back_to_main = InlineKeyboardMarkup(inline_keyboard=[
