@@ -5,7 +5,7 @@ This bot uses aiogram and Google’s Gemini API to simulate a personal AI therap
 ## Requirements
 - Python 3.11.9
 - aiogram==3.17.0
-- google-generativeai
+- google-generativeai==0.8.4
 
 ## Setup
 
@@ -14,20 +14,18 @@ This bot uses aiogram and Google’s Gemini API to simulate a personal AI therap
    ```
    pip install -r requirements.txt
    ```
-3. Create a `config.py` file with your credentials:
+3. Edit a `config.py` file with your credentials:
    ```python
    TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
    GEMINI_API_KEY = "YOUR_GEMINI_API_KEY"
    ```
-4. Ensure the bot can write to `chat_history.json` and `user_limits.json`.
-
 ## Running
 
 Start the bot by running:
 ```
-python your_script_name.py
+python bot.py
 ```
-Replace `your_script_name.py` with the actual filename.
+Replace `bot.py` with the actual filename only if it has been changed.
 
 ## Features
 
@@ -43,5 +41,5 @@ Replace `your_script_name.py` with the actual filename.
 
 ```
 aiogram==3.17.0
-google-generativeai
+google-generativeai==0.8.4
 ```
