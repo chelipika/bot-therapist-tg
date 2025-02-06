@@ -8,6 +8,8 @@ import google.generativeai as genai
 from config import GEMINI_API_KEY
 from datetime import datetime, timedelta
 from collections import defaultdict
+from aiogram.fsm.state import StatesGroup, State
+from aiogram.fsm.context import FSMContext
 from noor.instructions import INSTRUCTIONS_OF_AI
 from config import TOKEN
 bot = Bot(token=TOKEN)
@@ -16,6 +18,17 @@ import noor.keyboards as kb
 
 # File to store chat history
 CHAT_HISTORY_FILE = "chat_history.json"
+
+
+class Reg(StatesGroup):
+    user_id = State()
+    ai_name = State()
+    name = State()
+    Experience = State()
+    Approach = State()
+    Mission = State()
+    Commitment = State()
+    CallToAction = State() 
 
 # Load existing chat history from the file
 def load_chat_history():
@@ -117,7 +130,7 @@ async def history_callback(callback: CallbackQuery):
     user_id = str(callback.from_user.id)
     
     if user_id not in user_chat_histories or not user_chat_histories[user_id]:
-        await callback.message.answer("📜 No chat history found.", reply_markup=kb.back_to_main)
+        await callback.message.answer("📜 No chat history found. \n История чата не найдена", reply_markup=kb.back_to_main)
         return
 
     history_text = "\n\n".join(
@@ -125,14 +138,14 @@ async def history_callback(callback: CallbackQuery):
         for entry in user_chat_histories[user_id]
     )
 
-    await callback.message.edit_text(f"📜 Chat History:\n\n{history_text}", reply_markup=kb.back_to_main)
+    await callback.message.edit_text(f"📜 Chat History/История чата:\n\n{history_text}", reply_markup=kb.back_to_main)
     
 @router.callback_query(F.data == "fundup")
 async def fundup(callback: CallbackQuery):
     await callback.answer("Proccesing...")
     await callback.message.answer_invoice(
-        title="Extend limits",
-        description="Your going to extend you limit by 10 additional tries",
+        title="Extend limits/Расширить дневные лимиты",
+        description="Your going to extend you limit by 10 additional tries/Вы собираетесь продлить свой лимит на 10 дополнительных попыток.",
         payload='fundup_limits',
         currency="XTR",
         prices=[LabeledPrice(label="XTR", amount=1)]
@@ -141,25 +154,94 @@ async def fundup(callback: CallbackQuery):
 @router.callback_query(F.data == "back")
 async def back(callback: CallbackQuery):
     await callback.message.edit_text(hi_message, reply_markup=kb.settings)
-@router.message(Command('setupprofile'))
-async def set_up_profile(message: Message):
-    await message.answer("How should you call me?")
-    user_id = message.from_user.id
+
+@router.callback_query(F.data == "profile")
+async def back(callback: CallbackQuery, state: FSMContext):
+    await callback.answer("😍")
+    await state.set_state(Reg.name)
+    await callback.message.answer("How should i call you? write just name(e.g. Noor, Licensed Therapist) \n Как мне к вам обращаться? Напишите только имя (например, Нур, лицензированный терапевт)")
+@router.message(Command("reg"))
+async def reg_name(message: Message, state: FSMContext):
+    await state.set_state(Reg.name)
+    await message.answer("How should i call you?(e.g. Noor, Licensed Therapist) \n Как мне к вам обращаться? Напишите только имя (например, Нур, лицензированный терапевт)")
+
+@router.message(Reg.name)
+async def reg_exp(message: Message, state: FSMContext):
+    await state.update_data(name=message.text)
+    await state.set_state(Reg.Experience)
+    await message.answer('What do you do(e.g. junior designer, pro programmer, actor. If private leave "private") \n Чем вы занимаетесь (например, младший дизайнер, профессиональный программист, актер. Если вы частный, оставьте «частный»)')
+
+@router.message(Reg.Experience)
+async def reg_approach(message: Message, state: FSMContext):
+    await state.update_data(Experience=message.text)
+    await state.set_state(Reg.Approach)
+    await message.answer("How should i approach you? e.g.: \n(Direct, data-driven, and pragmatic—no fluff, just solutions)\n Как мне к вам обращаться? (Прямо, основано на данных и прагматично — без лишних слов, только решения)\n(Слыш, просто на чилях, не веди себя как чушпан, пиши только годные вещи)")
+
+@router.message(Reg.Approach)
+async def reg_Mission(message: Message, state: FSMContext):
+    await state.update_data(Approach=message.text)
+    await state.set_state(Reg.Mission)
+    await message.answer('What is my mission?(e.g. Helping you overcome obstacles and optimize mental performance, Help me to overcome procrastination) \n Какова моя миссия? (Например: Помогать вам преодолевать препятствия и оптимизировать умственную продуктивность, Помоги мне справиться с прокрастинацией)')
+
+
+@router.message(Reg.Mission)
+async def reg_Commitment(message: Message, state: FSMContext):
+    await state.update_data(Mission=message.text)
+    await state.set_state(Reg.Commitment)
+    await message.answer("How should i be commited?(e.g. Absolute confidentiality and clear guidance)\n Как я должен быть предан делу? (Например: Абсолютная конфиденциальность и четкие инструкции) \n (Сделай шутки про мои проблемы и в конце добавь какой фильм соответствует моей проблеме)")
+
+@router.message(Reg.Commitment)
+async def reg_CallToAction(message: Message, state: FSMContext):
+    await state.update_data(Commitment=message.text)
+    await state.set_state(Reg.CallToAction)
+    await message.answer("Write your typical Call-To-Action(e.g. Ready to tackle challenges? Let's get to work) \n Какой у тебя типичный призыв к действию? (Например: Готов разобраться с проблемами? Давай работать) \n (Слыш ты как телка небудь, давай ради родителей и детей пахай, ты через 5 лет собой будешь гордится)")
+
+@router.message(Reg.CallToAction)
+async def reg_ainame(message: Message, state: FSMContext):
+    await state.update_data(CallToAction=message.text)
+    await state.set_state(Reg.ai_name)
+    await message.answer("What name you prefer to me(e.g. Alex, Noor, Optimus, Elon, Temur, SquidPuppy) \n Какое имя ты предпочитаешь для меня? (Например: Алекс, Нур, Оптимус, Илон, Темур, SquidPuppy)")
+
+@router.message(Reg.ai_name)
+async def reg_finish(message: Message, state:FSMContext):
+    userid = str(message.from_user.id)
+    await state.update_data(ai_name=message.text)
+    await state.update_data(user_id=userid)
+    data = await state.get_data()
     data = {
-            user_id: {
-                'nameOfAi': message.text,
-                'usersName': None
+            userid: {
+                'ai_name': data["ai_name"],
+                'name': data["name"],
+                'Experience': data["Experience"],
+                'Approach': data["Approach"],
+                'Mission': data["Mission"],
+                'Commitment': data["Commitment"],
+                'CallToAction': data["CallToAction"]
             }
-        }
-    with open('userProfiles.json', 'w') as f:
-        json.dump(data, f)
-    
+            
+    }
+    userid_data = data[userid]
+    one_row_data = '"' + "userid: " + ", ".join(f"{key}={value}" for key, value in userid_data.items()) + '"'
+    if userid not in user_chat_histories:
+            user_chat_histories[userid] = []
+
+        # Add user message to history
+    user_chat_histories[userid].append({
+        "role": "user",
+        "parts": [{"text": one_row_data}]
+    })
+    save_chat_history()
+    with open('user_profile.json', 'w') as f:
+        json.dump(data, f, indent=4)
+    await message.answer(f"You fineshed up you registration.....🎊 \n Вы завершили регистрацию... \n {data}")
+    await state.clear()
+
 ###
 @router.message(Command('fund'))
 async def start(message: Message):
     await message.answer_invoice(
-        title="Extend limits",
-        description="Your going to extend you limit by 10 additional tries",
+        title="Extend limits/Расширить дневные лимиты",
+        description="Your going to extend you limit by 10 additional tries/Вы собираетесь продлить свой лимит на 10 дополнительных попыток.",
         payload='fundup_limits',
         currency="XTR",
         prices=[LabeledPrice(label="XTR", amount=1)]
@@ -176,7 +258,7 @@ async def successful_payment(message: Message):
     await bot.refund_star_payment(message.from_user.id, message.successful_payment.telegram_payment_charge_id)
 
     limit_manager.funded_limites(user_id=user_id)
-    await message.answer("Your stuff has been updated😍", reply_markup=kb.back_to_main)
+    await message.answer("Your stuff has been updated😍\n Ваши материалы обновлены😍", reply_markup=kb.back_to_main)
 ###
 
 
@@ -186,7 +268,7 @@ async def user_history(message: Message):
     user_id = str(message.from_user.id)
     
     if user_id not in user_chat_histories or not user_chat_histories[user_id]:
-        await message.answer("📜 No chat history found.")
+        await message.answer("📜 No chat history found. \n История чата не найдена")
         return
 
     history_text = "\n\n".join(
@@ -194,21 +276,21 @@ async def user_history(message: Message):
         for entry in user_chat_histories[user_id]
     )
 
-    await message.answer(f"📜 Chat History:\n\n{history_text}")
+    await message.answer(f"📜 Chat History/История чата:\n\n{history_text}")
 
 @router.message(Command('end'))
 async def end_current(message: Message):
     user_id = str(message.from_user.id)
     user_chat_histories[user_id] = []  # Clear history for new conversation
     save_chat_history()
-    await message.answer("🚮 History has been cleared")
+    await message.answer("🚮 History has been cleared \n 🚮История была очищена.")
 
 @router.message(Command('new'))
 async def end_current_start_new(message: Message):
     user_id = str(message.from_user.id)
     user_chat_histories[user_id] = []  # Clear history for new conversation
     save_chat_history()
-    await message.answer("🔄 New chat session started.")
+    await message.answer("🔄 New chat session started. \n 🔄 Начался новый сеанс чата")
 
 @router.message()
 async def the_text(message: Message):
@@ -222,7 +304,7 @@ async def the_text(message: Message):
             await message.reply(f"⛔️ You've reached your daily limit. Limits reset at: {reset_time_str} \n ⛔️ Вы использовали все сегодняшние попытки. Лимит перезагрузится в: {reset_time_str}")
             return
 
-        sent_message = await message.answer("Processing...")
+        sent_message = await message.answer("Doing something important, probably...\n Веду глубокую беседу со своими мозгами ")
 
         # Ensure user history exists
         if user_id not in user_chat_histories:
