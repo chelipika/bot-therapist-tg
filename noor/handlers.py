@@ -15,10 +15,9 @@ from noor.instructions import INSTRUCTIONS_OF_AI, greeting
 from config import TOKEN
 bot = Bot(token=TOKEN)
 import noor.keyboards as kb
-
 # File to store chat history
 CHAT_HISTORY_FILE = "chat_history.json"
-
+#test commit
 
 class Reg(StatesGroup):
     user_id = State()
