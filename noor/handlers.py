@@ -1,4 +1,5 @@
 import json
+import whisper
 import os
 from aiogram import F, Bot
 from aiogram.filters import CommandStart, Command
@@ -10,11 +11,10 @@ from datetime import datetime, timedelta
 from collections import defaultdict
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.fsm.context import FSMContext
-from noor.instructions import INSTRUCTIONS_OF_AI
+from noor.instructions import INSTRUCTIONS_OF_AI, greeting
 from config import TOKEN
 bot = Bot(token=TOKEN)
 import noor.keyboards as kb
-
 
 # File to store chat history
 CHAT_HISTORY_FILE = "chat_history.json"
@@ -116,9 +116,7 @@ model = genai.GenerativeModel(
 
 router = Router()
 limit_manager = UserLimitManager(max_daily_limit=20)
-hi_message = '''🧠 EN: Welcome to your personal AI psychologist! I provide confidential, empathetic support to help you navigate emotions, challenges, and personal growth. Together, we'll explore your inner world safely and constructively. Ready to begin? 💆‍♀️
-
-🌿 RU: Привет! Я твой личный психолог-ИИ! Предоставляю конфиденциальную поддержку, помогаю разобраться в эмоциях и личностном развитии. Вместе мы безопасно исследуем твой внутренний мир. Готов начать? 🤝'''
+hi_message = greeting
 @router.message(CommandStart())
 async def start(message: Message):
     await message.answer(f"Hi\Привет {message.from_user.full_name}\n {hi_message}", reply_markup=kb.settings)
@@ -292,7 +290,27 @@ async def end_current_start_new(message: Message):
     save_chat_history()
     await message.answer("🔄 New chat session started. \n 🔄 Начался новый сеанс чата")
 
-@router.message()
+@router.message(F.voice)
+async def handle_audio(message: Message):
+    the_x = await message.answer("active listening...")
+
+    split_tup = os.path.splitext(message.voice.file_id)
+    file_name = f"{split_tup[0]}_{message.from_user.id}{split_tup[1]}.ogg"
+    await bot.download(message.voice.file_id, file_name)
+
+    # # Load the model (choose "tiny", "base", "small", "medium", or "large" as needed)
+    model = whisper.load_model("small")
+
+    # # Transcribe the OGG audio file
+    result = model.transcribe(file_name)
+
+
+    # Output the text transcription
+    await the_x.edit_text(result["text"])
+    os.remove(file_name)
+
+
+@router.message(F.text)
 async def the_text(message: Message):
     if message.text is not None:
 
