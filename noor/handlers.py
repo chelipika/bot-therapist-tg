@@ -1,6 +1,5 @@
 import json
 import whisper
-import binascii
 import os
 from aiogram import F, Bot
 from aiogram.filters import CommandStart, Command, CommandObject
@@ -20,12 +19,6 @@ import noor.keyboards as kb
 CHAT_HISTORY_FILE = "chat_history.json"
 #test commit
 
-def simple_encrypt(message, key):
-    cipher = []
-    for i, char in enumerate(message):
-        cipher.append(ord(char) ^ ord(key[i % len(key)]))
-    # Convert to hex for easier handling
-    return binascii.hexlify(bytes(cipher)).decode()
 class Reg(StatesGroup):
     user_id = State()
     ai_name = State()
@@ -56,8 +49,9 @@ if not isinstance(user_chat_histories, dict):
     user_chat_histories = {}
 
 class UserLimitManager:
-    def __init__(self, max_daily_limit=5):
+    def __init__(self, max_daily_limit=5, audio_max_limits=0):
         self.max_daily_limit = max_daily_limit
+        self.max_daily_limit_audio = audio_max_limits
         self.user_limits = defaultdict(dict)
         self.filename = "user_limits.json"
         self.load_limits()
@@ -69,7 +63,8 @@ class UserLimitManager:
                 for user_id, info in data.items():
                     self.user_limits[user_id] = {
                         'count': info['count'],
-                        'last_reset': datetime.fromisoformat(info['last_reset'])
+                        'last_reset': datetime.fromisoformat(info['last_reset']),
+                        'audio_count': info['audio_count']
                     }
         except FileNotFoundError:
             pass
@@ -78,7 +73,8 @@ class UserLimitManager:
         data = {
             user_id: {
                 'count': info['count'],
-                'last_reset': info['last_reset'].isoformat()
+                'last_reset': info['last_reset'].isoformat(),
+                'audio_count': info['audio_count']
             }
             for user_id, info in self.user_limits.items()
         }
@@ -88,17 +84,24 @@ class UserLimitManager:
     def check_and_reset_daily(self, user_id):
         user_id = str(user_id)
         if user_id not in self.user_limits:
-            self.user_limits[user_id] = {'count': 0, 'last_reset': datetime.now()}
+            self.user_limits[user_id] = {'count': 0, 'last_reset': datetime.now(), 'audio_count': 0}
         
         last_reset = self.user_limits[user_id]['last_reset']
         if datetime.now() - last_reset > timedelta(days=1):
-            self.user_limits[user_id] = {'count': 0, 'last_reset': datetime.now()}
+            self.user_limits[user_id] = {'count': 0, 'last_reset': datetime.now(), 'audio_count': 0}
     def funded_limites(self, user_id):
         user_id = str(user_id)
         x = int(self.user_limits[user_id]['count'])
         y = self.user_limits[user_id]['last_reset']
-        self.user_limits[user_id] = {'count': x-10, 'last_reset': y}
-
+        j = int(self.user_limits[user_id]['audio_count'])
+        self.user_limits[user_id] = {'count': x-10, 'last_reset': y, 'audio_count': j}
+    def funded_limites_auido(self, user_id):
+        user_id = str(user_id)
+        x = int(self.user_limits[user_id]['count'])
+        y = self.user_limits[user_id]['last_reset']
+        j = int(self.user_limits[user_id]['audio_count'])
+        print(j-10)
+        self.user_limits[user_id] = {'count': x, 'last_reset': y, 'audio_count': j-10}
 
     async def use_limit(self, user_id):
         user_id = str(user_id)
@@ -112,6 +115,17 @@ class UserLimitManager:
         remaining = self.max_daily_limit - self.user_limits[user_id]['count']
         self.save_limits()
         return True, remaining, None
+    async def use_limit_audio(self, user_id):
+        user_id = str(user_id)
+        self.check_and_reset_daily(user_id)
+
+        if self.user_limits[user_id]['audio_count'] >= self.max_daily_limit_audio:
+            return False, 0
+
+        self.user_limits[user_id]['audio_count'] += 1
+        remaining = self.max_daily_limit_audio - self.user_limits[user_id]['audio_count']
+        self.save_limits()
+        return True, remaining
 
 # Configure the AI model
 genai.configure(api_key=GEMINI_API_KEY)
@@ -121,7 +135,7 @@ model = genai.GenerativeModel(
 )
 
 router = Router()
-limit_manager = UserLimitManager(max_daily_limit=20)
+limit_manager = UserLimitManager(max_daily_limit=20, audio_max_limits=0)
 hi_message = greeting
 @router.message(CommandStart())
 async def start(message: Message):
@@ -257,6 +271,16 @@ async def audio_plan(message: Message):
         prices=[LabeledPrice(label="XTR", amount=1)]
     )
 
+### testing / for developers and those who understand only
+@router.message(Command("jasur"))
+async def jasur(message: Message):
+    result = await bot.get_star_transactions(offset=0, limit=100)
+    with open("txt.txt", 'w', encoding="utf-8") as files:
+        files.write(str(result.transactions))# you should use the last star_transaction since the time zone may not match, or you can calculate the time zone and find the transaction you want
+    await bot.refund_star_payment(user_id=message.from_user.id, telegram_payment_charge_id='stxzmNSmhzhfmd9CMdU7qvRCXhWIcZCrLBsptM7nPY1cLd1PL_xJ71V0m6fJfp0B4qNvI4civuX44nh89MrltZGA-P5tugfYe8gUvhk8rHkd6o')
+### testing / for developers and those who understand only
+
+
 @router.message(Command('fund'))
 async def start_fund(message: Message):
     await message.answer_invoice(
@@ -272,18 +296,18 @@ async def pre_checkout_handler(event: PreCheckoutQuery):
     await event.answer(True)
 
 
-@router.message(F.successful_payment)
+@router.message(F.successful_payment.invoice_payload == "fundup_limits")
 async def successful_payment(message: Message):
     user_id = str(message.from_user.id)
     await bot.refund_star_payment(message.from_user.id, message.successful_payment.telegram_payment_charge_id)
-
     limit_manager.funded_limites(user_id=user_id)
     await message.answer("Your stuff has been updated😍\n Ваши материалы обновлены😍", reply_markup=kb.back_to_main)
 ###
-@router.message(F.successful_payment.payload == "fundup_audio_limits")
-async def successful_payment(message: Message):
+@router.message(F.successful_payment.invoice_payload == "fundup_audio_limits")
+async def successful_payment_audio(message: Message):
     user_id = str(message.from_user.id)
     await bot.refund_star_payment(message.from_user.id, message.successful_payment.telegram_payment_charge_id)
+    limit_manager.funded_limites_auido(user_id=user_id)
     await message.answer("Your stuff has been updated😍\n Ваши материалы обновлены😍", reply_markup=kb.back_to_main)
 ###
 
@@ -336,7 +360,7 @@ async def handle_audio(message: Message):
 
     if not can_proceed:
         reset_time_str = reset_time.strftime("%Y-%m-%d %H:%M:%S")
-        await message.reply(f"⛔️ You've reached your daily limit. Limits reset at: {reset_time_str} \n ⛔️ Вы использовали все сегодняшние попытки. Лимит перезагрузится в: {reset_time_str}")
+        await message.reply(f"⛔️ You've reached your daily limit. Limits reset at: {reset_time_str} \n ⛔️ Вы использовали все сегодняшние попытки. Лимит перезагрузится в: {reset_time_str} \nyou can buy additional limits by running '/fund'")
         return
 
     sent_message = await the_x.edit_text("Recording something important, probably...\n Веду глубокую беседу со своим микрофоном... ")
@@ -402,12 +426,14 @@ async def handle_audio(message: Message):
 async def audio_respone(message: Message, command: CommandObject):
     user_id = str(message.from_user.id)  # Convert to string for JSON compatibility
     can_proceed, remaining_limits, reset_time = await limit_manager.use_limit(user_id)
-
+    can_auido_proceed, remaining_audio_limits = await limit_manager.use_limit_audio(user_id)
     if not can_proceed:
         reset_time_str = reset_time.strftime("%Y-%m-%d %H:%M:%S")
-        await message.reply(f"⛔️ You've reached your daily limit. Limits reset at: {reset_time_str} \n ⛔️ Вы использовали все сегодняшние попытки. Лимит перезагрузится в: {reset_time_str}")
+        await message.reply(f"⛔️ You've reached your daily limit. Limits reset at: {reset_time_str} \n ⛔️ Вы использовали все сегодняшние попытки. Лимит перезагрузится в: {reset_time_str} \nyou can buy additional limits by running '/fund'")
         return
-
+    elif not can_auido_proceed:
+        await message.reply(f"🛑Sorry you haven't bought audio usage or you reached your limit, you can buy audio limits by running '/audio_plan'")
+        return
     sent_message = await message.answer("Recording something important, probably...\n Веду глубокую беседу со своим микрофоном... ")
 
     # Ensure user history exists
@@ -465,6 +491,7 @@ async def audio_respone(message: Message, command: CommandObject):
 
 
     await message.reply(f"✅ Command processed! {remaining_limits} uses remaining today.\n ✅ Запрос успешен! {remaining_limits} Попыток на сегодня.")
+    await message.reply(f"🎊 Command processed! {remaining_audio_limits} audio uses remaining.\n ✅ Запрос успешен! {remaining_audio_limits} Аудио попыток.")
     os.remove(file_name)
 
 
@@ -476,7 +503,7 @@ async def the_text(message: Message):
 
         if not can_proceed:
             reset_time_str = reset_time.strftime("%Y-%m-%d %H:%M:%S")
-            await message.reply(f"⛔️ You've reached your daily limit. Limits reset at: {reset_time_str} \n ⛔️ Вы использовали все сегодняшние попытки. Лимит перезагрузится в: {reset_time_str}")
+            await message.reply(f"⛔️ You've reached your daily limit. Limits reset at: {reset_time_str} \n ⛔️ Вы использовали все сегодняшние попытки. Лимит перезагрузится в: {reset_time_str} \nyou can buy additional limits by running '/fund'")
             return
 
         sent_message = await message.answer("Doing something important, probably...\n Веду глубокую беседу со своими мозгами ", parse_mode="HTMl")
