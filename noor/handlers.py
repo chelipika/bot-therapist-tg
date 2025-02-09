@@ -1,24 +1,31 @@
 import json
 import whisper
+import binascii
 import os
 from aiogram import F, Bot
-from aiogram.filters import CommandStart, Command
+from aiogram.filters import CommandStart, Command, CommandObject
+from aiogram.types import FSInputFile
 from aiogram.types import Message, LabeledPrice, PreCheckoutQuery, CallbackQuery
 from aiogram import Router
 import google.generativeai as genai
-from config import GEMINI_API_KEY
+from config import GEMINI_API_KEY, ELEVENLABS_API_KEY, TOKEN
 from datetime import datetime, timedelta
 from collections import defaultdict
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.fsm.context import FSMContext
 from noor.instructions import INSTRUCTIONS_OF_AI, greeting
-from config import TOKEN
 bot = Bot(token=TOKEN)
 import noor.keyboards as kb
 # File to store chat history
 CHAT_HISTORY_FILE = "chat_history.json"
 #test commit
 
+def simple_encrypt(message, key):
+    cipher = []
+    for i, char in enumerate(message):
+        cipher.append(ord(char) ^ ord(key[i % len(key)]))
+    # Convert to hex for easier handling
+    return binascii.hexlify(bytes(cipher)).decode()
 class Reg(StatesGroup):
     user_id = State()
     ai_name = State()
@@ -157,6 +164,12 @@ async def back(callback: CallbackQuery, state: FSMContext):
     await callback.answer("😍")
     await state.set_state(Reg.name)
     await callback.message.answer("How should i call you? write just name(e.g. Noor, Licensed Therapist) \n Как мне к вам обращаться? Напишите только имя (например, Нур, лицензированный терапевт)")
+
+
+
+
+
+
 @router.message(Command("reg"))
 async def reg_name(message: Message, state: FSMContext):
     await state.set_state(Reg.name)
@@ -233,9 +246,19 @@ async def reg_finish(message: Message, state:FSMContext):
     await message.answer(f"You fineshed up you registration.....🎊 \n Вы завершили регистрацию... \n {data}")
     await state.clear()
 
-###
+
+@router.message(Command("audio_plan"))
+async def audio_plan(message: Message):
+    await message.answer_invoice(
+        title="Extending limits for audio/Расширить лимиты для аудио",
+        description="Your going to extend you limit by 10 additional tries/Вы собираетесь продлить свой лимит на 10 дополнительных попыток.",
+        payload='fundup_audio_limits',
+        currency="XTR",
+        prices=[LabeledPrice(label="XTR", amount=1)]
+    )
+
 @router.message(Command('fund'))
-async def start(message: Message):
+async def start_fund(message: Message):
     await message.answer_invoice(
         title="Extend limits/Расширить дневные лимиты",
         description="Your going to extend you limit by 10 additional tries/Вы собираетесь продлить свой лимит на 10 дополнительных попыток.",
@@ -257,7 +280,12 @@ async def successful_payment(message: Message):
     limit_manager.funded_limites(user_id=user_id)
     await message.answer("Your stuff has been updated😍\n Ваши материалы обновлены😍", reply_markup=kb.back_to_main)
 ###
-
+@router.message(F.successful_payment.payload == "fundup_audio_limits")
+async def successful_payment(message: Message):
+    user_id = str(message.from_user.id)
+    await bot.refund_star_payment(message.from_user.id, message.successful_payment.telegram_payment_charge_id)
+    await message.answer("Your stuff has been updated😍\n Ваши материалы обновлены😍", reply_markup=kb.back_to_main)
+###
 
 
 @router.message(Command('history'))
@@ -298,21 +326,151 @@ async def handle_audio(message: Message):
     await bot.download(message.voice.file_id, file_name)
 
     # # Load the model (choose "tiny", "base", "small", "medium", or "large" as needed)
-    model = whisper.load_model("small")
+    whisper_model = whisper.load_model("small")
 
     # # Transcribe the OGG audio file
-    result = model.transcribe(file_name)
+    result = whisper_model.transcribe(file_name)
+    final_result = result["text"]
+    user_id = str(message.from_user.id)  # Convert to string for JSON compatibility
+    can_proceed, remaining_limits, reset_time = await limit_manager.use_limit(user_id)
+
+    if not can_proceed:
+        reset_time_str = reset_time.strftime("%Y-%m-%d %H:%M:%S")
+        await message.reply(f"⛔️ You've reached your daily limit. Limits reset at: {reset_time_str} \n ⛔️ Вы использовали все сегодняшние попытки. Лимит перезагрузится в: {reset_time_str}")
+        return
+
+    sent_message = await the_x.edit_text("Recording something important, probably...\n Веду глубокую беседу со своим микрофоном... ")
+
+    # Ensure user history exists
+    if user_id not in user_chat_histories:
+        user_chat_histories[user_id] = []
+
+    # Add user message to history
+    user_chat_histories[user_id].append({
+        "role": "user",
+        "parts": [{"text": final_result}]
+    })
+    save_chat_history()
+
+    # Generate AI response
+    chat_session = model.start_chat(history=user_chat_histories[user_id])
+    response = chat_session.send_message(final_result)
+
+    response_text = response.text
+
+    # Save AI response to history
+    user_chat_histories[user_id].append({
+        "role": "model",
+        "parts": [{"text": response_text}]
+    })
+    save_chat_history()
+    import requests
+
+    API_KEY = ELEVENLABS_API_KEY
+    VOICE_ID = "21m00Tcm4TlvDq8ikWAM"
+    TEXT = str(response_text)
+
+    url = f"https://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}"
+    headers = {
+        "xi-api-key": API_KEY,
+        "Content-Type": "application/json",
+        "Accept": "audio/mpeg"
+    }
+    data = {
+        "text": TEXT,
+        "voice_settings": {"stability": 0.5, "similarity_boost": 0.5}
+    }
+
+    response = requests.post(url, json=data, headers=headers)
+    file_name_voice = f"output_{message.from_user.id}.ogg"
+    if response.status_code == 200:
+        with open(file_name_voice, "wb") as f:
+            f.write(response.content)
+        cat = FSInputFile(file_name_voice, filename=f"output_{file_name_voice}_{message.from_user.id}.ogg")
+        await message.answer_voice(voice=cat, caption=response_text)
+    else:
+        print("Error:", response.text)
+    await sent_message.delete()
 
 
-    # Output the text transcription
-    await the_x.edit_text(result["text"])
+
+    await message.reply(f"✅ Command processed! {remaining_limits} uses remaining today.\n ✅ Запрос успешен! {remaining_limits} Попыток на сегодня.")
+    os.remove(file_name)
+    os.remove(file_name_voice)
+
+@router.message(Command(commands=["au", "audio"])) #/au how to fix my pose
+async def audio_respone(message: Message, command: CommandObject):
+    user_id = str(message.from_user.id)  # Convert to string for JSON compatibility
+    can_proceed, remaining_limits, reset_time = await limit_manager.use_limit(user_id)
+
+    if not can_proceed:
+        reset_time_str = reset_time.strftime("%Y-%m-%d %H:%M:%S")
+        await message.reply(f"⛔️ You've reached your daily limit. Limits reset at: {reset_time_str} \n ⛔️ Вы использовали все сегодняшние попытки. Лимит перезагрузится в: {reset_time_str}")
+        return
+
+    sent_message = await message.answer("Recording something important, probably...\n Веду глубокую беседу со своим микрофоном... ")
+
+    # Ensure user history exists
+    if user_id not in user_chat_histories:
+        user_chat_histories[user_id] = []
+
+    # Add user message to history
+    user_chat_histories[user_id].append({
+        "role": "user",
+        "parts": [{"text": command.args}]
+    })
+    save_chat_history()
+
+    # Generate AI response
+    chat_session = model.start_chat(history=user_chat_histories[user_id])
+    response = chat_session.send_message(command.args)
+
+    response_text = response.text
+
+    # Save AI response to history
+    user_chat_histories[user_id].append({
+        "role": "model",
+        "parts": [{"text": response_text}]
+    })
+    save_chat_history()
+    import requests
+
+    API_KEY = ELEVENLABS_API_KEY
+    VOICE_ID = "21m00Tcm4TlvDq8ikWAM"
+    TEXT = str(response_text)
+
+    url = f"https://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}"
+    headers = {
+        "xi-api-key": API_KEY,
+        "Content-Type": "application/json",
+        "Accept": "audio/mpeg"
+    }
+    data = {
+        "text": TEXT,
+        "voice_settings": {"stability": 0.5, "similarity_boost": 0.5}
+    }
+
+    response = requests.post(url, json=data, headers=headers)
+    file_name = f"output_{message.from_user.id}.ogg"
+    if response.status_code == 200:
+        with open(file_name, "wb") as f:
+            f.write(response.content)
+        from aiogram.types import FSInputFile
+        cat = FSInputFile(file_name, filename=f"output_{file_name}_{message.from_user.id}.ogg")
+        await message.answer_voice(voice=cat, caption=response_text)
+    else:
+        print("Error:", response.text)
+    await sent_message.delete()
+
+
+
+    await message.reply(f"✅ Command processed! {remaining_limits} uses remaining today.\n ✅ Запрос успешен! {remaining_limits} Попыток на сегодня.")
     os.remove(file_name)
 
 
 @router.message(F.text)
 async def the_text(message: Message):
     if message.text is not None:
-
         user_id = str(message.from_user.id)  # Convert to string for JSON compatibility
         can_proceed, remaining_limits, reset_time = await limit_manager.use_limit(user_id)
 
@@ -321,7 +479,7 @@ async def the_text(message: Message):
             await message.reply(f"⛔️ You've reached your daily limit. Limits reset at: {reset_time_str} \n ⛔️ Вы использовали все сегодняшние попытки. Лимит перезагрузится в: {reset_time_str}")
             return
 
-        sent_message = await message.answer("Doing something important, probably...\n Веду глубокую беседу со своими мозгами ")
+        sent_message = await message.answer("Doing something important, probably...\n Веду глубокую беседу со своими мозгами ", parse_mode="HTMl")
 
         # Ensure user history exists
         if user_id not in user_chat_histories:
@@ -351,7 +509,7 @@ async def the_text(message: Message):
         text = ""
         for chunk in response:  # Normal for-loop
             text += chunk.text
-            await sent_message.edit_text(text)
+            await sent_message.edit_text(text, parse_mode="HTMl")
 
 
         await message.reply(f"✅ Command processed! {remaining_limits} uses remaining today.\n ✅ Запрос успешен! {remaining_limits} Попыток на сегодня.")
