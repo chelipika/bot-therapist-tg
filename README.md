@@ -6,7 +6,7 @@ This bot uses aiogram and Google’s Gemini API to simulate a personal AI therap
 - Python 3.11.9
 - aiogram==3.17.0
 - google-generativeai==0.8.4
-
+- openai-whisper==20240930
 ## Setup
 
 1. Create and activate a virtual environment.
@@ -42,4 +42,5 @@ Replace `bot.py` with the actual filename only if it has been changed.
 ```
 aiogram==3.17.0
 google-generativeai==0.8.4
+openai-whisper==20240930
 ```
