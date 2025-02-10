@@ -4,66 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <link rel="stylesheet" href="style.css">
     <title>Noor AI Login Page</title>
-    <style>
-        body{
-            background-image: url("https://cdn.imgpile.com/f/aQlbRgC_xl.jpg");
-            background-repeat: no-repeat;
-        }
-        .container{
-            position: relative; /* Needed for the pseudo-element positioning */
-            width: 350px; /* Adjusted width */
-            margin: 100px auto;
-            display: flex;
-            flex-direction: column;
-            border: 2px solid #4a2eb1; /* Color the border */
-            border-radius: 20px;
-            padding: 20px; /* Added padding to provide space inside the container */
-            background: transparent;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); /* Add a subtle shadow */
-            transition: all 0.3s ease; /* Smooth transitions */
-        }
-        .container::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            right: 0;
-            bottom: 0;
-            left: 0;
-            border-radius: inherit;
-            backdrop-filter: blur(10px); /* Apply blur to the pseudo-element */
-            background: rgba(255, 255, 255, 0.1); /* Set a semi-transparent background */
-            z-index: -1; /* Place the pseudo-element behind the content */
-        }
-        .container:hover{
-            transform: scale(1.02); /* Slightly enlarge container on hover */
-            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2); /* Increase shadow on hover */
-        }
-        .container div{
-            margin: 30px 0;
-            background-color: #4a2eb1; /* Use hex values for colors */
-            border-radius: 5px;
-            text-align: center;
-            padding: 10px; /* Add padding inside the div */
-            color: white; /* Change text color */
-            font-weight: bold; /* Make text bold */
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); /* Add a subtle shadow */
-            transition: all 0.2s ease; /* Smooth transitions */
-        }
-        .container div:hover{
-            background-color: #3a2391; /* Darker shade on hover */
-            transform: scale(1.1); /* Move upwards on hover */
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); /* Increase shadow on hover */
-        }
-        .container p{
-            margin: 5px 0;
-            padding: 5px; /* Add padding inside the paragraph */
-            background-color: #000000; /* White background for paragraphs */
-            border-radius: 5px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); /* Add a subtle shadow */
-            transition: all 0.3s ease; /* Smooth transitions */
-        }
-    </style>
 </head>
 <body>
     <div class="container">
