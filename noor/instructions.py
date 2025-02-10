@@ -90,3 +90,14 @@ Ready to start our conversation? 💆‍♀️
 
 
 '''
+voices_text = '''
+ 🎙️ Voice Options
+Default = Rachel
+  <blockquote>👩 Female</blockquote>
+- Rachel - Calm American voice, perfect for soothing content 🌟
+- Domi - Strong American voice, great for impactful delivery 💪
+
+  <blockquote>👨 Male</blockquote>
+- Joseph - Professional British voice, ideal for formal content 🎩
+- Liam - Versatile American voice, suits any narration 🎯
+'''
