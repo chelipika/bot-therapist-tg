@@ -264,10 +264,20 @@ async def back(callback: CallbackQuery):
 @router.callback_query(F.data == "profile")
 async def profileus(callback: CallbackQuery, state: FSMContext):
     await callback.answer("😍")
+    await callback.message.edit_text("Here you can create or see your profile💼", reply_markup=kb.profile_settings)
+    
+@router.callback_query(F.data == "show_users_profliee")
+async def show_users_profliee(callback: CallbackQuery):
     user_id = str(callback.from_user.id)
-    if user_id in user_profile or user_id in user_profile[user_id]:
-        await callback.message.edit_text(f"Here is your profile: \n👤 Your_name: {user_profile[user_id]['name']} \n💼 Your_exp_job: {user_profile[user_id]['Experience']} \n💡 My_Approach: {user_profile[user_id]['Approach']} \n🚀 My_Mission: {user_profile[user_id]['Mission']} \n🔒 My_Commitment: {user_profile[user_id]['Commitment']} \n📞 Your_CallToAction: {user_profile[user_id]['CallToAction']} \n🤖 My_ai_name: {user_profile[user_id]['ai_name']}", reply_markup=kb.back_to_main)
-        return
+    try:
+        await callback.message.edit_text(f"Here is your profile: \n👤 Your_name: {user_profile[user_id]['name']} \n💼 Your_exp_job: {user_profile[user_id]['Experience']} \n💡 My_Approach: {user_profile[user_id]['Approach']} \n🚀 My_Mission: {user_profile[user_id]['Mission']} \n🔒 My_Commitment: {user_profile[user_id]['Commitment']} \n📞 Your_CallToAction: {user_profile[user_id]['CallToAction']} \n🤖 My_ai_name: {user_profile[user_id]['ai_name']}", reply_markup=kb.profile_settings)
+    except KeyError:
+        await callback.message.edit_text("You dont have a profile yet so you should create one", reply_markup=kb.profile_creating)
+
+
+@router.callback_query(F.data == "create_update_profile")
+async def create_update_profile(callback: CallbackQuery, state: FSMContext):
+    await callback.answer("💼")
     await state.set_state(Reg.name)
     await callback.message.answer("How should I call you? Write just your name (e.g. Noor, Licensed Therapist) \n Как мне к вам обращаться? Напишите только имя (например, Нур, лицензированный терапевт)")
 
@@ -349,6 +359,10 @@ async def reg_finish(message: Message, state:FSMContext):
     save_chat_history()
     with open(USER_PROFILE_FILE, 'w') as f:
         json.dump(data, f, indent=4)
+
+    global user_profile  # Important: Access the global variable
+    user_profile.update(data) # Update in-memory data
+    # user_profile = load_user_profile() # <--- OLD CODE
     await message.answer(f"You fineshed up you registration.....🎊 \n Вы завершили регистрацию... \n {data}")
     await state.clear()
 
