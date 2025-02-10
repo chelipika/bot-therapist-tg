@@ -1,10 +1,12 @@
 import json
 import whisper
+import aiofiles
+import requests
 import os
 from aiogram import F, Bot
 from aiogram.filters import CommandStart, Command, CommandObject
-from aiogram.types import FSInputFile
-from aiogram.types import Message, LabeledPrice, PreCheckoutQuery, CallbackQuery
+from aiogram.types import Message, LabeledPrice, PreCheckoutQuery, CallbackQuery, FSInputFile
+from aiogram.exceptions import TelegramBadRequest
 from aiogram import Router
 import google.generativeai as genai
 from config import GEMINI_API_KEY, ELEVENLABS_API_KEY, TOKEN
@@ -12,12 +14,13 @@ from datetime import datetime, timedelta
 from collections import defaultdict
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.fsm.context import FSMContext
-from noor.instructions import INSTRUCTIONS_OF_AI, greeting
+from noor.instructions import INSTRUCTIONS_OF_AI, greeting, voices_text
 bot = Bot(token=TOKEN)
 import noor.keyboards as kb
 # File to store chat history
 CHAT_HISTORY_FILE = "chat_history.json"
-#test commit
+USER_PROFILE_FILE = "user_profile.json"
+VOICE_SETTINGS_FILE = "voice_settings.json"
 
 class Reg(StatesGroup):
     user_id = State()
@@ -29,10 +32,34 @@ class Reg(StatesGroup):
     Commitment = State()
     CallToAction = State() 
 
+
+# --- Load and Save Voice Settings ---
+async def load_voice_settings():
+    try:
+        if os.path.exists(VOICE_SETTINGS_FILE):
+            async with aiofiles.open(VOICE_SETTINGS_FILE, "r") as f:
+                return json.loads(await f.read())
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {"default_voice_id": "21m00Tcm4TlvDq8ikWAM"}  # Default value
+
+async def save_voice_settings(voice_id):
+    try:
+        async with aiofiles.open(VOICE_SETTINGS_FILE, "w") as f:
+            await f.write(json.dumps({"default_voice_id": voice_id}, indent=4))
+    except Exception as e:
+        print(f"Error saving voice settings: {e}")
+
+
 # Load existing chat history from the file
 def load_chat_history():
     if os.path.exists(CHAT_HISTORY_FILE):
         with open(CHAT_HISTORY_FILE, "r") as f:
+            return json.load(f)
+    return {}
+#loading existing user_profile
+def load_user_profile():
+    if os.path.exists(USER_PROFILE_FILE):
+        with open(USER_PROFILE_FILE, "r") as f:
             return json.load(f)
     return {}
 
@@ -43,7 +70,7 @@ def save_chat_history():
 
 # Initialize user chat history
 user_chat_histories = load_chat_history()
-
+user_profile = load_user_profile()
 # Ensure dictionary format
 if not isinstance(user_chat_histories, dict):
     user_chat_histories = {}
@@ -100,7 +127,6 @@ class UserLimitManager:
         x = int(self.user_limits[user_id]['count'])
         y = self.user_limits[user_id]['last_reset']
         j = int(self.user_limits[user_id]['audio_count'])
-        print(j-10)
         self.user_limits[user_id] = {'count': x, 'last_reset': y, 'audio_count': j-10}
 
     async def use_limit(self, user_id):
@@ -135,7 +161,7 @@ model = genai.GenerativeModel(
 )
 
 router = Router()
-limit_manager = UserLimitManager(max_daily_limit=20, audio_max_limits=0)
+limit_manager = UserLimitManager(max_daily_limit=20, audio_max_limits=5)
 hi_message = greeting
 @router.message(CommandStart())
 async def start(message: Message):
@@ -144,19 +170,41 @@ async def start(message: Message):
 
 @router.callback_query(F.data == 'history_callback')
 async def history_callback(callback: CallbackQuery):
-    await callback.answer("History: show")
+    try:
+        await callback.answer("History: show")
+        user_id = str(callback.from_user.id)
+        
+        if user_id not in user_chat_histories or not user_chat_histories[user_id]:
+            await callback.message.edit_text("📜 No chat history found. \n История чата не найдена", reply_markup=kb.back_to_main)
+            return
+
+        history_text = "\n\n".join(
+            f"{entry['role'].capitalize()}: {entry['parts'][0]['text']}"
+            for entry in user_chat_histories[user_id]
+        )
+
+        await callback.message.edit_text(f"📜 Chat History/История чата:\n\n{history_text}", reply_markup=kb.back_to_main)
+    except TelegramBadRequest as e:
+        if 'MESSAGE_TOO_LONG' in str(e):
+            await callback.message.edit_text(f"Error: {e}. Message is too long, Should i converit it to txt file?.", reply_markup=kb.history_text)
+        else:
+            await callback.message.edit_text(f"An error occurred: {e}")
+
+@router.callback_query(F.data == "send_as_file_history")
+async def send_as_file_history(callback: CallbackQuery):
+    await callback.answer("Proccesing...")
     user_id = str(callback.from_user.id)
-    
-    if user_id not in user_chat_histories or not user_chat_histories[user_id]:
-        await callback.message.answer("📜 No chat history found. \n История чата не найдена", reply_markup=kb.back_to_main)
-        return
-
     history_text = "\n\n".join(
-        f"{entry['role'].capitalize()}: {entry['parts'][0]['text']}"
-        for entry in user_chat_histories[user_id]
-    )
+            f"{entry['role'].capitalize()}: {entry['parts'][0]['text']}"
+            for entry in user_chat_histories[user_id]
+        )
+    file_hist_name = f"history{user_id}.txt"
+    with open(file_hist_name, 'w', encoding="utf-8") as history_file:
+        history_file.write(history_text)
+    hist_doc = FSInputFile(file_hist_name, filename=f"output_{file_hist_name}_{callback.from_user.id}.txt")
+    await callback.message.answer_document(hist_doc, caption="Here is your history in txt file ⬆️")
+    os.remove(file_hist_name)
 
-    await callback.message.edit_text(f"📜 Chat History/История чата:\n\n{history_text}", reply_markup=kb.back_to_main)
     
 @router.callback_query(F.data == "fundup")
 async def fundup(callback: CallbackQuery):
@@ -168,16 +216,60 @@ async def fundup(callback: CallbackQuery):
         currency="XTR",
         prices=[LabeledPrice(label="XTR", amount=1)]
     )
+@router.callback_query(F.data == "voice_change")
+async def audio_voice_change(callback: CallbackQuery):
+    await callback.answer("Proccesing...")
+    await callback.message.edit_text(voices_text, reply_markup=kb.aviable_voices)
 
+
+@router.callback_query(F.data == "Joseph_change_voice")
+async def Joseph_change_voice(callback: CallbackQuery):
+    VOICE_ID = "Zlb1dXrM653N07WRdFW3"
+    await save_voice_settings(VOICE_ID)
+    await callback.answer("The voice has been changed... ✌️")    
+@router.callback_query(F.data == "Liam_change_voice")
+async def Liam_change_voice(callback: CallbackQuery):
+    VOICE_ID = "TX3LPaxmHKxFdv7VOQHJ"
+    await save_voice_settings(VOICE_ID)
+    await callback.answer("The voice has been changed...✌️")
+
+@router.callback_query(F.data == "Domi_change_voice")
+async def Domi_change_voice(callback: CallbackQuery):
+    VOICE_ID = "AZnzlk1XvdvUeBnXmlld"
+    await save_voice_settings(VOICE_ID)
+    await callback.answer("The voice has been changed...✌️")
+
+@router.callback_query(F.data == "Rachel_change_voice")
+async def Joseph_change_voice(callback: CallbackQuery):
+    VOICE_ID = "21m00Tcm4TlvDq8ikWAM"
+    await save_voice_settings(VOICE_ID)
+    await callback.answer("The voice has been changed...✌️")
+
+
+
+@router.callback_query(F.data == 'fund_up_audio')
+async def fund_the_audio(callback: CallbackQuery):
+    await callback.answer("Proccesing...")
+    await callback.message.answer_invoice(
+        title="Extending limits for audio/Расширить лимиты для аудио",
+        description="Your going to extend your audio limit by 10 additional tries/Вы собираетесь продлить свой аудио лимит на 10 дополнительных попыток.",
+        payload='fundup_audio_limits',
+        currency="XTR",
+        prices=[LabeledPrice(label="XTR", amount=1)]
+    )
 @router.callback_query(F.data == "back")
 async def back(callback: CallbackQuery):
     await callback.message.edit_text(hi_message, reply_markup=kb.settings)
 
 @router.callback_query(F.data == "profile")
-async def back(callback: CallbackQuery, state: FSMContext):
+async def profileus(callback: CallbackQuery, state: FSMContext):
     await callback.answer("😍")
+    user_id = str(callback.from_user.id)
+    if user_id in user_profile or user_id in user_profile[user_id]:
+        await callback.message.edit_text(f"Here is your profile: \n👤 Your_name: {user_profile[user_id]['name']} \n💼 Your_exp_job: {user_profile[user_id]['Experience']} \n💡 My_Approach: {user_profile[user_id]['Approach']} \n🚀 My_Mission: {user_profile[user_id]['Mission']} \n🔒 My_Commitment: {user_profile[user_id]['Commitment']} \n📞 Your_CallToAction: {user_profile[user_id]['CallToAction']} \n🤖 My_ai_name: {user_profile[user_id]['ai_name']}", reply_markup=kb.back_to_main)
+        return
     await state.set_state(Reg.name)
-    await callback.message.answer("How should i call you? write just name(e.g. Noor, Licensed Therapist) \n Как мне к вам обращаться? Напишите только имя (например, Нур, лицензированный терапевт)")
+    await callback.message.answer("How should I call you? Write just your name (e.g. Noor, Licensed Therapist) \n Как мне к вам обращаться? Напишите только имя (например, Нур, лицензированный терапевт)")
 
 
 
@@ -255,7 +347,7 @@ async def reg_finish(message: Message, state:FSMContext):
         "parts": [{"text": one_row_data}]
     })
     save_chat_history()
-    with open('user_profile.json', 'w') as f:
+    with open(USER_PROFILE_FILE, 'w') as f:
         json.dump(data, f, indent=4)
     await message.answer(f"You fineshed up you registration.....🎊 \n Вы завершили регистрацию... \n {data}")
     await state.clear()
@@ -272,12 +364,12 @@ async def audio_plan(message: Message):
     )
 
 ### testing / for developers and those who understand only
-@router.message(Command("jasur"))
-async def jasur(message: Message):
-    result = await bot.get_star_transactions(offset=0, limit=100)
-    with open("txt.txt", 'w', encoding="utf-8") as files:
-        files.write(str(result.transactions))# you should use the last star_transaction since the time zone may not match, or you can calculate the time zone and find the transaction you want
-    await bot.refund_star_payment(user_id=message.from_user.id, telegram_payment_charge_id='stxzmNSmhzhfmd9CMdU7qvRCXhWIcZCrLBsptM7nPY1cLd1PL_xJ71V0m6fJfp0B4qNvI4civuX44nh89MrltZGA-P5tugfYe8gUvhk8rHkd6o')
+# @router.message(Command("jasur"))
+# async def jasur(message: Message):
+#     result = await bot.get_star_transactions(offset=0, limit=100)
+#     with open("txt.txt", 'w', encoding="utf-8") as files:
+#         files.write(str(result.transactions))# you should use the last star_transaction since the time zone may not match, or you can calculate the time zone and find the transaction you want
+#     await bot.refund_star_payment(user_id=message.from_user.id, telegram_payment_charge_id='stxzmNSmhzhfmd9CMdU7qvRCXhWIcZCrLBsptM7nPY1cLd1PL_xJ71V0m6fJfp0B4qNvI4civuX44nh89MrltZGA-P5tugfYe8gUvhk8rHkd6o')
 ### testing / for developers and those who understand only
 
 
@@ -388,12 +480,11 @@ async def handle_audio(message: Message):
         "parts": [{"text": response_text}]
     })
     save_chat_history()
-    import requests
 
     API_KEY = ELEVENLABS_API_KEY
-    VOICE_ID = "21m00Tcm4TlvDq8ikWAM"
     TEXT = str(response_text)
-
+    x = await load_voice_settings()
+    VOICE_ID = x["default_voice_id"]
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}"
     headers = {
         "xi-api-key": API_KEY,
@@ -413,7 +504,7 @@ async def handle_audio(message: Message):
         cat = FSInputFile(file_name_voice, filename=f"output_{file_name_voice}_{message.from_user.id}.ogg")
         await message.answer_voice(voice=cat, caption=response_text)
     else:
-        print("Error:", response.text)
+        message.answer("Error:", response.text)
     await sent_message.delete()
 
 
@@ -462,7 +553,8 @@ async def audio_respone(message: Message, command: CommandObject):
     import requests
 
     API_KEY = ELEVENLABS_API_KEY
-    VOICE_ID = "21m00Tcm4TlvDq8ikWAM"
+    x = await load_voice_settings()
+    VOICE_ID = x["default_voice_id"]
     TEXT = str(response_text)
 
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}"
@@ -481,11 +573,10 @@ async def audio_respone(message: Message, command: CommandObject):
     if response.status_code == 200:
         with open(file_name, "wb") as f:
             f.write(response.content)
-        from aiogram.types import FSInputFile
         cat = FSInputFile(file_name, filename=f"output_{file_name}_{message.from_user.id}.ogg")
         await message.answer_voice(voice=cat, caption=response_text)
     else:
-        print("Error:", response.text)
+        message.answer("Error:", response.text)
     await sent_message.delete()
 
 
