@@ -27,3 +27,15 @@ aviable_voices = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="Joseph", callback_data="Joseph_change_voice"), InlineKeyboardButton(text="Liam", callback_data="Liam_change_voice")],
     [InlineKeyboardButton(text="Back🔙", callback_data="back")]
 ])
+
+
+profile_settings = InlineKeyboardMarkup(inline_keyboard=[
+    [InlineKeyboardButton(text="Show my profile", callback_data="show_users_profliee"), InlineKeyboardButton(text="Create/change profile", callback_data="create_update_profile")],
+    [InlineKeyboardButton(text="Back🔙", callback_data="back")]
+
+])
+
+
+profile_creating = InlineKeyboardMarkup(inline_keyboard=[
+    [InlineKeyboardButton(text="Create your profile", callback_data="create_update_profile")]
+])
