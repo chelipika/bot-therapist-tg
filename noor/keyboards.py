@@ -25,6 +25,7 @@ history_text = InlineKeyboardMarkup(inline_keyboard=[
 aviable_voices = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="Rachel", callback_data="Rachel_change_voice"), InlineKeyboardButton(text="Domi", callback_data="Domi_change_voice")],
     [InlineKeyboardButton(text="Joseph", callback_data="Joseph_change_voice"), InlineKeyboardButton(text="Liam", callback_data="Liam_change_voice")],
+    [InlineKeyboardButton(text="Preview of the voices", url="https://chelipika.github.io/bot-therapist-tg/")],
     [InlineKeyboardButton(text="Back🔙", callback_data="back")]
 ])
 
