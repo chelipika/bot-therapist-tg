@@ -1,5 +1,5 @@
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
-
+from config import CHANNEL_LINK
 main = ReplyKeyboardMarkup(keyboard=[
     [KeyboardButton(text="Main mune")]
 ],
@@ -7,8 +7,8 @@ main = ReplyKeyboardMarkup(keyboard=[
         input_field_placeholder="Write smth...")
 
 settings = InlineKeyboardMarkup(inline_keyboard=[
-    [InlineKeyboardButton(text="History", callback_data="history_callback"), InlineKeyboardButton(text="Fund up Messages", callback_data="fundup")],
-    [InlineKeyboardButton(text="Profile", callback_data="profile"), InlineKeyboardButton(text="Audio Fund", callback_data="fund_up_audio")],
+    [InlineKeyboardButton(text="History", callback_data="history_callback")],
+    [InlineKeyboardButton(text="Profile", callback_data="profile")],
     [InlineKeyboardButton(text="Change audio voice", callback_data="voice_change")]
 ])
 
@@ -35,7 +35,10 @@ profile_settings = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="Back🔙", callback_data="back")]
 
 ])
-
+subscribe_channel = InlineKeyboardMarkup(inline_keyboard=[
+    [InlineKeyboardButton(text="Subscribe", url=CHANNEL_LINK)],
+    [InlineKeyboardButton(text="Check", callback_data="subchek")]
+])
 
 profile_creating = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="Create your profile", callback_data="create_update_profile")]
