@@ -5,11 +5,11 @@ import requests
 import os
 from aiogram import F, Bot
 from aiogram.filters import CommandStart, Command, CommandObject
-from aiogram.types import Message, LabeledPrice, PreCheckoutQuery, CallbackQuery, FSInputFile
+from aiogram.types import Message, LabeledPrice, PreCheckoutQuery, CallbackQuery, FSInputFile, ChatJoinRequest
 from aiogram.exceptions import TelegramBadRequest
 from aiogram import Router
 import google.generativeai as genai
-from config import GEMINI_API_KEY, ELEVENLABS_API_KEY, TOKEN
+from config import GEMINI_API_KEY, ELEVENLABS_API_KEY, TOKEN, CHANNEL_ID, CHANNEL_LINK
 from datetime import datetime, timedelta
 from collections import defaultdict
 from aiogram.fsm.state import StatesGroup, State
@@ -67,7 +67,18 @@ def load_user_profile():
 def save_chat_history():
     with open(CHAT_HISTORY_FILE, "w") as f:
         json.dump(user_chat_histories, f, indent=4)
+def sub_chek(user_id):
+    if user_id in pending_requests:
+        return True
+    else:
+        return False
 
+async def is_subscribed(user_id: int) -> bool:
+    try:
+        member = await bot.get_chat_member(chat_id=CHANNEL_ID, user_id=user_id)
+        return member.status in ("member", "administrator", "creator")
+    except Exception:
+        return False
 # Initialize user chat history
 user_chat_histories = load_chat_history()
 user_profile = load_user_profile()
@@ -163,10 +174,29 @@ model = genai.GenerativeModel(
 router = Router()
 limit_manager = UserLimitManager(max_daily_limit=20, audio_max_limits=5)
 hi_message = greeting
+pending_requests = set()
+
+
+@router.chat_join_request()
+async def handle_join_request(update: ChatJoinRequest):
+    pending_requests.add(update.from_user.id)
+    # Optionally notify admins or log the request
+
 @router.message(CommandStart())
 async def start(message: Message):
+    if not sub_chek(message.from_user.id):
+        await message.answer(f"Subscribe first, Подпишитесь: \n{CHANNEL_LINK}", reply_markup=kb.subscribe_channel)
+        return
     await message.answer(f"Hi\Привет {message.from_user.full_name}\n {hi_message}", reply_markup=kb.settings)
+    
 
+@router.callback_query(F.data == "subchek")
+async def subchek(callback: CallbackQuery):
+    if not sub_chek(callback.from_user.id):
+        await callback.answer("Your not subscribed yet",)
+        return
+    await callback.answer("Your are okay to go")
+    
 
 @router.callback_query(F.data == 'history_callback')
 async def history_callback(callback: CallbackQuery):
@@ -288,6 +318,9 @@ async def create_update_profile(callback: CallbackQuery, state: FSMContext):
 
 @router.message(Command("reg"))
 async def reg_name(message: Message, state: FSMContext):
+    if not sub_chek(message.from_user.id):
+        await message.answer(f"Subscribe first, Подпишитесь: \n{CHANNEL_LINK}", reply_markup=kb.subscribe_channel)
+        return
     await state.set_state(Reg.name)
     await message.answer("How should i call you?(e.g. Noor, Licensed Therapist) \n Как мне к вам обращаться? Напишите только имя (например, Нур, лицензированный терапевт)")
 
@@ -369,6 +402,9 @@ async def reg_finish(message: Message, state:FSMContext):
 
 @router.message(Command("audio_plan"))
 async def audio_plan(message: Message):
+    if not sub_chek(message.from_user.id):
+        await message.answer(f"Subscribe first, Подпишитесь: \n{CHANNEL_LINK}", reply_markup=kb.subscribe_channel)
+        return
     await message.answer_invoice(
         title="Extending limits for audio/Расширить лимиты для аудио",
         description="Your going to extend you limit by 10 additional tries/Вы собираетесь продлить свой лимит на 10 дополнительных попыток.",
@@ -389,6 +425,9 @@ async def audio_plan(message: Message):
 
 @router.message(Command('fund'))
 async def start_fund(message: Message):
+    if not sub_chek(message.from_user.id):
+        await message.answer(f"Subscribe first, Подпишитесь: \n{CHANNEL_LINK}", reply_markup=kb.subscribe_channel)
+        return
     await message.answer_invoice(
         title="Extend limits/Расширить дневные лимиты",
         description="Your going to extend you limit by 10 additional tries/Вы собираетесь продлить свой лимит на 10 дополнительных попыток.",
@@ -402,19 +441,27 @@ async def pre_checkout_handler(event: PreCheckoutQuery):
     await event.answer(True)
 
 
+
+
+
 @router.message(F.successful_payment.invoice_payload == "fundup_limits")
 async def successful_payment(message: Message):
     user_id = str(message.from_user.id)
-    #await bot.refund_star_payment(message.from_user.id, message.successful_payment.telegram_payment_charge_id) // for testing purposes \ it will refund the stars a.k.a it will give your stars(money) back, use it for test purposes
+    await bot.refund_star_payment(message.from_user.id, message.successful_payment.telegram_payment_charge_id) # for testing purposes \ it will refund the stars a.k.a it will give your stars(money) back, use it for test purposes
+    can_proceed, remaining_limits, reset_time = await limit_manager.use_limit(user_id)
     limit_manager.funded_limites(user_id=user_id)
+    await message.reply(f"✅ LIMIT check! {remaining_limits} uses remaining today.\n ✅ ПРОВЕРка ЛИМИТА! {remaining_limits} Попыток на сегодня.")
+
     await message.answer("Your stuff has been updated😍\n Ваши материалы обновлены😍", reply_markup=kb.back_to_main)
 ###
 @router.message(F.successful_payment.invoice_payload == "fundup_audio_limits")
 async def successful_payment_audio(message: Message):
     user_id = str(message.from_user.id)
-    #await bot.refund_star_payment(message.from_user.id, message.successful_payment.telegram_payment_charge_id) // for testing purposes \ it will refund the stars a.k.a it will give your stars(money) back, use it for test purposes
+    await bot.refund_star_payment(message.from_user.id, message.successful_payment.telegram_payment_charge_id) # for testing purposes \ it will refund the stars a.k.a it will give your stars(money) back, use it for test purposes
     limit_manager.funded_limites_auido(user_id=user_id)
+    can_proceed, remaining_limits, reset_time = await limit_manager.use_limit(user_id)
     await message.answer("Your stuff has been updated😍\n Ваши материалы обновлены😍", reply_markup=kb.back_to_main)
+    await message.reply(f"✅ LIMIT check! {remaining_limits} uses remaining today.\n ✅ ПРОВЕРка ЛИМИТА! {remaining_limits} Попыток на сегодня.")
 ###
 
 
@@ -449,6 +496,9 @@ async def end_current_start_new(message: Message):
 
 @router.message(F.voice)
 async def handle_audio(message: Message):
+    if not sub_chek(message.from_user.id):
+        await message.answer(f"Subscribe first, Подпишитесь: \n{CHANNEL_LINK}", reply_markup=kb.subscribe_channel)
+        return
     the_x = await message.answer("active listening...")
 
     split_tup = os.path.splitext(message.voice.file_id)
@@ -529,6 +579,9 @@ async def handle_audio(message: Message):
 
 @router.message(Command(commands=["au", "audio"])) #/au how to fix my pose
 async def audio_respone(message: Message, command: CommandObject):
+    if not sub_chek(message.from_user.id):
+        await message.answer(f"Subscribe first, Подпишитесь: \n{CHANNEL_LINK}", reply_markup=kb.subscribe_channel)
+        return
     user_id = str(message.from_user.id)  # Convert to string for JSON compatibility
     can_proceed, remaining_limits, reset_time = await limit_manager.use_limit(user_id)
     can_auido_proceed, remaining_audio_limits = await limit_manager.use_limit_audio(user_id)
@@ -602,6 +655,9 @@ async def audio_respone(message: Message, command: CommandObject):
 
 @router.message(F.text)
 async def the_text(message: Message):
+    if not sub_chek(message.from_user.id):
+        await message.answer(f"Subscribe first, Подпишитесь: \n{CHANNEL_LINK}", reply_markup=kb.subscribe_channel)
+        return
     if message.text is not None:
         user_id = str(message.from_user.id)  # Convert to string for JSON compatibility
         can_proceed, remaining_limits, reset_time = await limit_manager.use_limit(user_id)
