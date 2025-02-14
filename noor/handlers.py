@@ -405,14 +405,14 @@ async def pre_checkout_handler(event: PreCheckoutQuery):
 @router.message(F.successful_payment.invoice_payload == "fundup_limits")
 async def successful_payment(message: Message):
     user_id = str(message.from_user.id)
-    await bot.refund_star_payment(message.from_user.id, message.successful_payment.telegram_payment_charge_id)
+    #await bot.refund_star_payment(message.from_user.id, message.successful_payment.telegram_payment_charge_id) // for testing purposes \ it will refund the stars a.k.a it will give your stars(money) back, use it for test purposes
     limit_manager.funded_limites(user_id=user_id)
     await message.answer("Your stuff has been updated😍\n Ваши материалы обновлены😍", reply_markup=kb.back_to_main)
 ###
 @router.message(F.successful_payment.invoice_payload == "fundup_audio_limits")
 async def successful_payment_audio(message: Message):
     user_id = str(message.from_user.id)
-    await bot.refund_star_payment(message.from_user.id, message.successful_payment.telegram_payment_charge_id)
+    #await bot.refund_star_payment(message.from_user.id, message.successful_payment.telegram_payment_charge_id) // for testing purposes \ it will refund the stars a.k.a it will give your stars(money) back, use it for test purposes
     limit_manager.funded_limites_auido(user_id=user_id)
     await message.answer("Your stuff has been updated😍\n Ваши материалы обновлены😍", reply_markup=kb.back_to_main)
 ###
