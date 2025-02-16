@@ -21,6 +21,7 @@ import noor.keyboards as kb
 CHAT_HISTORY_FILE = "chat_history.json"
 USER_PROFILE_FILE = "user_profile.json"
 VOICE_SETTINGS_FILE = "voice_settings.json"
+ALL_USERS_DB = "all_users.json"
 
 class Reg(StatesGroup):
     user_id = State()
@@ -62,7 +63,11 @@ def load_user_profile():
         with open(USER_PROFILE_FILE, "r") as f:
             return json.load(f)
     return {}
-
+def load_all_user():
+    if os.path.exists(ALL_USERS_DB):
+        with open(ALL_USERS_DB, "r") as f:
+            return json.load(f)
+    return {}
 # Save chat history to the file
 def save_chat_history():
     with open(CHAT_HISTORY_FILE, "w") as f:
@@ -177,6 +182,14 @@ limit_manager = UserLimitManager(max_daily_limit=20, audio_max_limits=1)
 hi_message = greeting
 pending_requests = set()
 
+import aiosqlite
+
+DATABASE = "all_users.db"
+
+async def init_db():
+    async with aiosqlite.connect(DATABASE) as db:
+        await db.execute("CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY)")
+        await db.commit()
 
 @router.chat_join_request()
 async def handle_join_request(update: ChatJoinRequest):
@@ -185,12 +198,29 @@ async def handle_join_request(update: ChatJoinRequest):
 
 @router.message(CommandStart())
 async def start(message: Message):
+    user_id = message.from_user.id
+    async with aiosqlite.connect(DATABASE) as db:
+        await db.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
+        await db.commit()
 
     if not sub_chek(message.from_user.id):
         await message.answer(f"Subscribe first, Подпишитесь: \n{CHANNEL_LINK}", reply_markup=kb.subscribe_channel)
         return
     await message.answer(f"Hi\Привет {message.from_user.full_name}\n {hi_message}", reply_markup=kb.settings)
-    
+
+
+
+async def send_to_all(text: str, bot):
+    async with aiosqlite.connect(DATABASE) as db:
+        async with db.execute("SELECT user_id FROM users") as cursor:
+            async for row in cursor:
+                await bot.send_message(chat_id=row[0], text=text)
+
+@router.message(Command("narrator"))
+async def narrator(message: Message, command: CommandObject):
+    await send_to_all(command.args, message.bot)
+
+
 
 @router.callback_query(F.data == "subchek")
 async def subchek(callback: CallbackQuery):

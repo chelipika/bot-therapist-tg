@@ -1,7 +1,7 @@
 import asyncio
 from config import TOKEN
 from aiogram import Bot, Dispatcher
-from noor.handlers import router
+from noor.handlers import router, init_db
 
 
 bot = Bot(token=TOKEN)
@@ -11,6 +11,7 @@ dp = Dispatcher()
 
 
 async def main():
+    await init_db()
     print("BOT start polling.....")
     dp.include_router(router=router)
     await bot.delete_webhook(drop_pending_updates=True)
