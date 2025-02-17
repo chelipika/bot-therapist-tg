@@ -171,11 +171,14 @@ class UserLimitManager:
         return True, remaining
 
 # Configure the AI model
+os.environ["GENAI_API_ENDPOINT"] = "us-central1-genai.googleapis.com"
 genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel(
     model_name="gemini-1.5-flash",
     system_instruction=INSTRUCTIONS_OF_AI
 )
+
+
 
 router = Router()
 limit_manager = UserLimitManager(max_daily_limit=20, audio_max_limits=1)
