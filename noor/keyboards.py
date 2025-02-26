@@ -43,3 +43,13 @@ subscribe_channel = InlineKeyboardMarkup(inline_keyboard=[
 profile_creating = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="Create your profile", callback_data="create_update_profile")]
 ])
+add_to_group = InlineKeyboardMarkup(inline_keyboard=[
+    [InlineKeyboardButton(text="Add to group", url="https://telegram.me/safsfasfsbot?startgroup=true")]
+])
+def create_markap_kb(name, url):
+    if name == "None" or url== "None":
+        return None
+    ads_channel = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=name, url=url)]
+    ])
+    return ads_channel
