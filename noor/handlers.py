@@ -14,6 +14,7 @@ from datetime import datetime, timedelta
 from collections import defaultdict
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.fsm.context import FSMContext
+import database.requests as rq
 from noor.instructions import INSTRUCTIONS_OF_AI, greeting, voices_text
 bot = Bot(token=TOKEN)
 import noor.keyboards as kb
@@ -33,7 +34,17 @@ class Reg(StatesGroup):
     Commitment = State()
     CallToAction = State() 
 
+class AdvMsg(StatesGroup):
+    img = State()
+    audio = State()
+    txt = State()
+    inline_link_name = State()
+    inline_link_link = State()
+    
+    
 
+class Gen(StatesGroup):
+    wait = State()
 # --- Load and Save Voice Settings ---
 async def load_voice_settings():
     try:
@@ -77,6 +88,7 @@ async def sub_chek(user_id):
         return True
     else:
         return False
+
 
 async def is_subscribed(user_id: int) -> bool:
     try:
@@ -192,8 +204,6 @@ class UserLimitManager:
         remaining = self.max_daily_limit_audio - self.user_limits[user_id]['audio_count']
         self.save_limits()
         return True, remaining
-class Gen(StatesGroup):
-    wait = State()
 # Configure the AI model
 os.environ["GENAI_API_ENDPOINT"] = "us-central1-genai.googleapis.com"
 genai.configure(api_key=GEMINI_API_KEY)
@@ -207,45 +217,31 @@ model = genai.GenerativeModel(
 router = Router()
 limit_manager = UserLimitManager(max_daily_limit=20, audio_max_limits=1)
 hi_message = greeting
-pending_requests = set()
-
-import aiosqlite
-
-DATABASE = "all_users.db"
-
-async def init_db():
-    async with aiosqlite.connect(DATABASE) as db:
-        await db.execute("CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY)")
-        await db.commit()
-
+async def get_pending_requests():
+    return await rq.get_all_rq_user_ids()
+import asyncio
+pending_requests = asyncio.run(get_pending_requests())
 @router.chat_join_request()
 async def handle_join_request(update: ChatJoinRequest):
-    pending_requests.add(update.from_user.id)
+    await rq.set_req_user(update.from_user.id)
+    return rq.get_all_rq_user_ids()
     # Optionally notify admins or log the request
 
 @router.message(CommandStart())
 async def start(message: Message):
     user_id = message.from_user.id
-    async with aiosqlite.connect(DATABASE) as db:
-        await db.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
-        await db.commit()
+    await rq.set_user(tg_id=user_id)
 
     if not await sub_chek(message.from_user.id):
         await message.answer(f"Subscribe first, Подпишитесь: \n{CHANNEL_LINK}", reply_markup=kb.subscribe_channel)
         return
     await message.answer(f"Hi\Привет {message.from_user.full_name}\n {hi_message}", reply_markup=kb.settings)
 
-
-
-async def send_to_all(text: str, bot):
-    async with aiosqlite.connect(DATABASE) as db:
-        async with db.execute("SELECT user_id FROM users") as cursor:
-            async for row in cursor:
-                await bot.send_message(chat_id=row[0], text=text)
-
-@router.message(Command("narrator"))
+    
+@router.message(Command("narrator")) #// /narrator 123456, all users will recieve 123456
 async def narrator(message: Message, command: CommandObject):
-    await send_to_all(command.args, message.bot)
+    for user in await rq.get_all_user_ids():
+        await bot.send_message(chat_id=user, text=command.args)
 
 
 
@@ -369,6 +365,53 @@ async def create_update_profile(callback: CallbackQuery, state: FSMContext):
     await callback.answer("💼")
     await state.set_state(Reg.name)
     await callback.message.answer("How should I call you? Write just your name (e.g. Noor, Licensed Therapist) \n Как мне к вам обращаться? Напишите только имя (например, Нур, лицензированный терапевт)")
+
+@router.message(Command("send_to_all_users"))
+async def start_send_to_all(message: Message, state: FSMContext):
+    await state.set_state(AdvMsg.img)
+    await message.answer("send your img🖼️")
+
+
+@router.message(AdvMsg.img)
+async def ads_img(message: Message, state: FSMContext):
+    photo_data = { "photo": message.photo }  # Ensure it's in dictionary format
+    await state.update_data(img=message.photo[-1].file_id)
+    await state.set_state(AdvMsg.txt)
+    await message.answer("send your text🗄️")
+
+@router.message(AdvMsg.txt)
+async def ads_txt(message: Message, state: FSMContext):
+    await state.update_data(txt=message.text)
+    await state.set_state(AdvMsg.inline_link_name)
+    await message.answer("send your inline_link name📛")
+
+@router.message(AdvMsg.inline_link_name)
+async def ads_lk_name(message: Message, state: FSMContext):
+    await state.update_data(inline_link_name=message.text)
+    await state.set_state(AdvMsg.inline_link_link)
+    await message.answer("send your inline_link LINK🔗")
+
+@router.message(AdvMsg.inline_link_link)
+async def ads_final(message: Message, state: FSMContext):
+    await state.update_data(inline_link_link=message.text)
+    data = await state.get_data()
+    new_inline_kb = kb.create_markap_kb(name=data['inline_link_name'], url=data['inline_link_link'])
+    if new_inline_kb == None:
+        for user in await rq.get_all_user_ids():
+            if data['img']:
+                await bot.send_photo(chat_id=user, photo=data['img'],caption=data['txt'])
+            elif data['audio']:
+                await bot.send_voice(chat_id=user, voice=data['audio'], caption=data["txt"])
+
+    else:
+        for user in await rq.get_all_user_ids():
+            if data['img']:
+                await bot.send_photo(chat_id=user, photo=data['img'],caption=data['txt'], reply_markup=new_inline_kb)
+            elif data['audio']:
+                await bot.send_voice(chat_id=user, voice=data['audio'], caption=data["txt"], reply_markup=new_inline_kb)
+
+
+    await state.clear()
 
 
 @router.message(Gen.wait)
@@ -557,10 +600,11 @@ async def end_current_start_new(message: Message):
     await message.answer("🔄 New chat session started. \n 🔄 Начался новый сеанс чата")
 
 @router.message(F.voice)
-async def handle_audio(message: Message):
+async def handle_audio(message: Message, state: FSMContext):
     if not await sub_chek(message.from_user.id):
         await message.answer(f"Subscribe first, Подпишитесь: \n{CHANNEL_LINK}", reply_markup=kb.subscribe_channel)
         return
+    await state.set_state(Gen.wait)
     user_id = str(message.from_user.id)  # Convert to string for JSON compatibility
     can_proceed, remaining_limits, reset_time = await limit_manager.use_limit(user_id)
     can_auido_proceed, remaining_audio_limits = await limit_manager.use_limit_audio(user_id)
@@ -627,12 +671,14 @@ async def handle_audio(message: Message):
         await message.reply(f"🎊 Command processed! {remaining_audio_limits} audio uses remaining.\n ✅ Запрос успешен! {remaining_audio_limits} Аудио попыток.")
     except FileNotFoundError:
         await message.answer("Error: audio api has reached it's limits \n come back next month or donate")
+    await state.clear()
 
 @router.message(Command(commands=["au", "audio"])) #/au how to fix my pose
-async def audio_respone(message: Message, command: CommandObject):
+async def audio_respone(message: Message, command: CommandObject,  state: FSMContext):
     if not await sub_chek(message.from_user.id):
         await message.answer(f"Subscribe first, Подпишитесь: \n{CHANNEL_LINK}", reply_markup=kb.subscribe_channel)
         return
+    await state.set_state(Gen.wait)
     user_id = str(message.from_user.id)  # Convert to string for JSON compatibility
     can_proceed, remaining_limits, reset_time = await limit_manager.use_limit(user_id)
     can_auido_proceed, remaining_audio_limits = await limit_manager.use_limit_audio(user_id)
@@ -687,6 +733,7 @@ async def audio_respone(message: Message, command: CommandObject):
         await message.reply(f"🎊 Command processed! {remaining_audio_limits} audio uses remaining.\n ✅ Запрос успешен! {remaining_audio_limits} Аудио попыток.")
     except FileNotFoundError:
         await message.answer("Error: audio api has reached it's limits \n come back next month or donate")
+    await state.clear()
 
 @router.message(F.text)
 async def the_text(message: Message, state: FSMContext):
