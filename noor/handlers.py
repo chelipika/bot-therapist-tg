@@ -166,7 +166,7 @@ class UserLimitManager:
             self.user_limits[user_id] = {'count': 0, 'last_reset': datetime.now(), 'audio_count': 0}
         
         last_reset = self.user_limits[user_id]['last_reset']
-        if datetime.now() - last_reset > timedelta(days=1):
+        if datetime.now() - last_reset > timedelta(hours=1):
             self.user_limits[user_id] = {'count': 0, 'last_reset': datetime.now(), 'audio_count': 0}
     def funded_limites(self, user_id):
         user_id = str(user_id)
@@ -186,7 +186,7 @@ class UserLimitManager:
         self.check_and_reset_daily(user_id)
 
         if self.user_limits[user_id]['count'] >= self.max_daily_limit:
-            reset_time = self.user_limits[user_id]['last_reset'] + timedelta(days=1)
+            reset_time = self.user_limits[user_id]['last_reset'] + timedelta(hours=1)
             return False, 0, reset_time
 
         self.user_limits[user_id]['count'] += 1
@@ -667,7 +667,6 @@ async def handle_audio(message: Message, state: FSMContext):
     os.remove(file_name)
     try:
         os.remove(file_name_voice)
-        await message.reply(f"✅ Command processed! {remaining_limits} uses remaining today.\n ✅ Запрос успешен! {remaining_limits} Попыток на сегодня.")
         await message.reply(f"🎊 Command processed! {remaining_audio_limits} audio uses remaining.\n ✅ Запрос успешен! {remaining_audio_limits} Аудио попыток.")
     except FileNotFoundError:
         await message.answer("Error: audio api has reached it's limits \n come back next month or donate")
@@ -729,7 +728,6 @@ async def audio_respone(message: Message, command: CommandObject,  state: FSMCon
     await sent_message.delete()
     try:
         os.remove(file_name)
-        await message.reply(f"✅ Command processed! {remaining_limits} uses remaining today.\n ✅ Запрос успешен! {remaining_limits} Попыток на сегодня.")
         await message.reply(f"🎊 Command processed! {remaining_audio_limits} audio uses remaining.\n ✅ Запрос успешен! {remaining_audio_limits} Аудио попыток.")
     except FileNotFoundError:
         await message.answer("Error: audio api has reached it's limits \n come back next month or donate")
@@ -756,7 +754,4 @@ async def the_text(message: Message, state: FSMContext):
     x = await generate_the_content(message.text,user_id)
 
     await sent_message.edit_text(x, parse_mode="HTMl")
-
-
-    await message.reply(f"✅ Command processed! {remaining_limits} uses remaining today.\n ✅ Запрос успешен! {remaining_limits} Попыток на сегодня.")
     await state.clear()
