@@ -72,8 +72,8 @@ def load_all_user():
 def save_chat_history():
     with open(CHAT_HISTORY_FILE, "w") as f:
         json.dump(user_chat_histories, f, indent=4)
-def sub_chek(user_id):
-    if user_id in pending_requests or is_subscribed(user_id=user_id):
+async def sub_chek(user_id):
+    if user_id in pending_requests or await is_subscribed(user_id=user_id):
         return True
     else:
         return False
@@ -84,6 +84,29 @@ async def is_subscribed(user_id: int) -> bool:
         return member.status in ("member", "administrator", "creator")
     except Exception:
         return False
+    
+async def generate_the_content(text: str, userid: int):
+    # Ensure user history exists
+    if userid not in user_chat_histories:
+        user_chat_histories[userid] = []
+
+    # Add user message to history
+    user_chat_histories[userid].append({
+        "role": "user",
+        "parts": [{"text": text}]
+    })
+    save_chat_history()
+    chat_session = model.start_chat(history=user_chat_histories[userid])
+    response = await chat_session.send_message_async(text)
+    response_text = response.text
+
+    # Save AI response to history
+    user_chat_histories[userid].append({
+        "role": "model",
+        "parts": [{"text": response_text}]
+    })
+    save_chat_history()
+    return response_text
     
 # Initialize user chat history
 user_chat_histories = load_chat_history()
@@ -169,7 +192,8 @@ class UserLimitManager:
         remaining = self.max_daily_limit_audio - self.user_limits[user_id]['audio_count']
         self.save_limits()
         return True, remaining
-
+class Gen(StatesGroup):
+    wait = State()
 # Configure the AI model
 os.environ["GENAI_API_ENDPOINT"] = "us-central1-genai.googleapis.com"
 genai.configure(api_key=GEMINI_API_KEY)
@@ -206,7 +230,7 @@ async def start(message: Message):
         await db.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
         await db.commit()
 
-    if not sub_chek(message.from_user.id):
+    if not await sub_chek(message.from_user.id):
         await message.answer(f"Subscribe first, Подпишитесь: \n{CHANNEL_LINK}", reply_markup=kb.subscribe_channel)
         return
     await message.answer(f"Hi\Привет {message.from_user.full_name}\n {hi_message}", reply_markup=kb.settings)
@@ -227,7 +251,7 @@ async def narrator(message: Message, command: CommandObject):
 
 @router.callback_query(F.data == "subchek")
 async def subchek(callback: CallbackQuery):
-    if not sub_chek(callback.from_user.id):
+    if not await sub_chek(callback.from_user.id):
         await callback.answer("Your not subscribed yet",)
         return
     await callback.answer("Your are okay to go")
@@ -347,13 +371,16 @@ async def create_update_profile(callback: CallbackQuery, state: FSMContext):
     await callback.message.answer("How should I call you? Write just your name (e.g. Noor, Licensed Therapist) \n Как мне к вам обращаться? Напишите только имя (например, Нур, лицензированный терапевт)")
 
 
+@router.message(Gen.wait)
+async def stop_flood(message: Message):
+    await message.answer("Wait one requests at a time \nПодождите ваш запрос генерируется.")
 
 
 
 
 @router.message(Command("reg"))
 async def reg_name(message: Message, state: FSMContext):
-    if not sub_chek(message.from_user.id):
+    if not await sub_chek(message.from_user.id):
         await message.answer(f"Subscribe first, Подпишитесь: \n{CHANNEL_LINK}", reply_markup=kb.subscribe_channel)
         return
     await state.set_state(Reg.name)
@@ -437,7 +464,7 @@ async def reg_finish(message: Message, state:FSMContext):
 
 @router.message(Command("audio_plan"))
 async def audio_plan(message: Message):
-    if not sub_chek(message.from_user.id):
+    if not await sub_chek(message.from_user.id):
         await message.answer(f"Subscribe first, Подпишитесь: \n{CHANNEL_LINK}", reply_markup=kb.subscribe_channel)
         return
     await message.answer_invoice(
@@ -460,7 +487,7 @@ async def audio_plan(message: Message):
 
 @router.message(Command('fund'))
 async def start_fund(message: Message):
-    if not sub_chek(message.from_user.id):
+    if not await sub_chek(message.from_user.id):
         await message.answer(f"Subscribe first, Подпишитесь: \n{CHANNEL_LINK}", reply_markup=kb.subscribe_channel)
         return
     await message.answer_invoice(
@@ -531,7 +558,7 @@ async def end_current_start_new(message: Message):
 
 @router.message(F.voice)
 async def handle_audio(message: Message):
-    if not sub_chek(message.from_user.id):
+    if not await sub_chek(message.from_user.id):
         await message.answer(f"Subscribe first, Подпишитесь: \n{CHANNEL_LINK}", reply_markup=kb.subscribe_channel)
         return
     user_id = str(message.from_user.id)  # Convert to string for JSON compatibility
@@ -563,33 +590,13 @@ async def handle_audio(message: Message):
     user_id = str(message.from_user.id)  # Convert to string for JSON compatibility
 
     sent_message = await the_x.edit_text("Recording something important, probably...\n Веду глубокую беседу со своим микрофоном... ")
+    
+    respone_txt = await generate_the_content(message.text,user_id)
 
-    # Ensure user history exists
-    if user_id not in user_chat_histories:
-        user_chat_histories[user_id] = []
-
-    # Add user message to history
-    user_chat_histories[user_id].append({
-        "role": "user",
-        "parts": [{"text": final_result}]
-    })
-    save_chat_history()
-
-    # Generate AI response
-    chat_session = model.start_chat(history=user_chat_histories[user_id])
-    response = chat_session.send_message(final_result)
-
-    response_text = response.text
-
-    # Save AI response to history
-    user_chat_histories[user_id].append({
-        "role": "model",
-        "parts": [{"text": response_text}]
-    })
-    save_chat_history()
+    await sent_message.edit_text(respone_txt, parse_mode="HTMl")
 
     API_KEY = ELEVENLABS_API_KEY
-    TEXT = str(response_text)
+    TEXT = str(respone_txt)
     VOICE_ID = x["default_voice_id"]
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}"
     headers = {
@@ -623,7 +630,7 @@ async def handle_audio(message: Message):
 
 @router.message(Command(commands=["au", "audio"])) #/au how to fix my pose
 async def audio_respone(message: Message, command: CommandObject):
-    if not sub_chek(message.from_user.id):
+    if not await sub_chek(message.from_user.id):
         await message.answer(f"Subscribe first, Подпишитесь: \n{CHANNEL_LINK}", reply_markup=kb.subscribe_channel)
         return
     user_id = str(message.from_user.id)  # Convert to string for JSON compatibility
@@ -642,35 +649,15 @@ async def audio_respone(message: Message, command: CommandObject):
         return
     sent_message = await message.answer("Recording something important, probably...\n Веду глубокую беседу со своим микрофоном... ")
 
-    # Ensure user history exists
-    if user_id not in user_chat_histories:
-        user_chat_histories[user_id] = []
+    
+    respone_txt = await generate_the_content(message.text,user_id)
 
-    # Add user message to history
-    user_chat_histories[user_id].append({
-        "role": "user",
-        "parts": [{"text": command.args}]
-    })
-    save_chat_history()
-
-    # Generate AI response
-    chat_session = model.start_chat(history=user_chat_histories[user_id])
-    response = chat_session.send_message(command.args)
-
-    response_text = response.text
-
-    # Save AI response to history
-    user_chat_histories[user_id].append({
-        "role": "model",
-        "parts": [{"text": response_text}]
-    })
-    save_chat_history()
-    import requests
+    await sent_message.edit_text(respone_txt, parse_mode="HTMl")
 
     API_KEY = ELEVENLABS_API_KEY
     x = await load_voice_settings()
     VOICE_ID = x["default_voice_id"]
-    TEXT = str(response_text)
+    TEXT = str(respone_txt)
 
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}"
     headers = {
@@ -701,52 +688,28 @@ async def audio_respone(message: Message, command: CommandObject):
     except FileNotFoundError:
         await message.answer("Error: audio api has reached it's limits \n come back next month or donate")
 
-
 @router.message(F.text)
-async def the_text(message: Message):
-    if not sub_chek(message.from_user.id):
+async def the_text(message: Message, state: FSMContext):
+    if not await sub_chek(message.from_user.id):
         await message.answer(f"Subscribe first, Подпишитесь: \n{CHANNEL_LINK}", reply_markup=kb.subscribe_channel)
         return
-    if message.text is not None:
-        user_id = str(message.from_user.id)  # Convert to string for JSON compatibility
-        can_proceed, remaining_limits, reset_time = await limit_manager.use_limit(user_id)
+    if message.text == None:
+        return
+    await state.set_state(Gen.wait)
+    user_id = str(message.from_user.id)  # Convert to string for JSON compatibility
+    can_proceed, remaining_limits, reset_time = await limit_manager.use_limit(user_id)
 
-        if not can_proceed:
-            reset_time_str = reset_time.strftime("%Y-%m-%d %H:%M:%S")
-            await message.reply(f"⛔️ You've reached your daily limit. Limits reset at: {reset_time_str} \n ⛔️ Вы использовали все сегодняшние попытки. Лимит перезагрузится в: {reset_time_str} \nyou can buy additional limits by running '/fund'")
-            return
+    if not can_proceed:
+        reset_time_str = reset_time.strftime("%Y-%m-%d %H:%M:%S")
+        await message.reply(f"⛔️ You've reached your daily limit. Limits reset at: {reset_time_str} \n ⛔️ Вы использовали все сегодняшние попытки. Лимит перезагрузится в: {reset_time_str} \nyou can buy additional limits by running '/fund'")
+        return
 
-        sent_message = await message.answer("Doing something important, probably...\n Веду глубокую беседу со своими мозгами ", parse_mode="HTMl")
+    sent_message = await message.answer("Doing something important, probably...\n Веду глубокую беседу со своими мозгами ", parse_mode="HTMl")
 
-        # Ensure user history exists
-        if user_id not in user_chat_histories:
-            user_chat_histories[user_id] = []
+    x = await generate_the_content(message.text,user_id)
 
-        # Add user message to history
-        user_chat_histories[user_id].append({
-            "role": "user",
-            "parts": [{"text": message.text}]
-        })
-        save_chat_history()
-
-        # Generate AI response
-        chat_session = model.start_chat(history=user_chat_histories[user_id])
-        response = chat_session.send_message(message.text)
-
-        response_text = response.text
-
-        # Save AI response to history
-        user_chat_histories[user_id].append({
-            "role": "model",
-            "parts": [{"text": response_text}]
-        })
-        save_chat_history()
-
-        # Send response to user
-        text = ""
-        for chunk in response:  # Normal for-loop
-            text += chunk.text
-            await sent_message.edit_text(text, parse_mode="HTMl")
+    await sent_message.edit_text(x, parse_mode="HTMl")
 
 
-        await message.reply(f"✅ Command processed! {remaining_limits} uses remaining today.\n ✅ Запрос успешен! {remaining_limits} Попыток на сегодня.")
+    await message.reply(f"✅ Command processed! {remaining_limits} uses remaining today.\n ✅ Запрос успешен! {remaining_limits} Попыток на сегодня.")
+    await state.clear()
