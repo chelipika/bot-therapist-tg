@@ -17,14 +17,11 @@ class User(Base):
     __tablename__ = "users"
     id: Mapped[int] = mapped_column(primary_key=True)
     tg_id: Mapped[int] = mapped_column(BigInteger)  
-    
 
-class Requested_users(Base):
-    __tablename__ = "reqUsers"
+class Group(Base):
+    __tablename__ = "groups"
     id: Mapped[int] = mapped_column(primary_key=True)
-    tg_id: Mapped[int] = mapped_column(BigInteger)  
-
-
+    tg_id: Mapped[int] = mapped_column(BigInteger)
 
 
 async def async_main():

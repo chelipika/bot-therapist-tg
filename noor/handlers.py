@@ -6,6 +6,7 @@ import os
 from aiogram import F, Bot
 from aiogram.filters import CommandStart, Command, CommandObject
 from aiogram.types import Message, LabeledPrice, PreCheckoutQuery, CallbackQuery, FSInputFile, ChatJoinRequest
+from aiogram.types import ChatMemberUpdated
 from aiogram.exceptions import TelegramBadRequest
 from aiogram import Router
 import google.generativeai as genai
@@ -41,7 +42,12 @@ class AdvMsg(StatesGroup):
     inline_link_name = State()
     inline_link_link = State()
     
-    
+class GroupMsg(StatesGroup):
+    img = State()
+    audio = State()
+    txt = State()
+    inline_link_name = State()
+    inline_link_link = State()
 
 class Gen(StatesGroup):
     wait = State()
@@ -217,15 +223,30 @@ model = genai.GenerativeModel(
 router = Router()
 limit_manager = UserLimitManager(max_daily_limit=20, audio_max_limits=1)
 hi_message = greeting
-async def get_pending_requests():
-    return await rq.get_all_rq_user_ids()
-import asyncio
-pending_requests = asyncio.run(get_pending_requests())
+pending_requests = set()
+
+
+
 @router.chat_join_request()
 async def handle_join_request(update: ChatJoinRequest):
-    await rq.set_req_user(update.from_user.id)
-    return rq.get_all_rq_user_ids()
+    pending_requests.add(update.from_user.id)
     # Optionally notify admins or log the request
+
+@router.my_chat_member()
+async def handle_new_chat(update: ChatMemberUpdated):
+    chat_id = update.chat.id
+    await rq.set_group(chat_id)
+    # Save chat_id to your database or list
+
+@router.channel_post()
+async def forward_channel_post(message: Message):
+    """Forwards messages from the channel to a all users in bot, the channel you created to accept the requests 
+    will be the target channel(posts from this channel will be listened and forwarded to all users)."""
+    for user in await rq.get_all_user_ids():
+        try:
+            await bot.forward_message(from_chat_id=CHANNEL_ID,chat_id=user, message_id=message.message_id)
+        except Exception as e:
+            await message.answer(f"Unexpected error: {e}")
 
 @router.message(CommandStart())
 async def start(message: Message):
@@ -413,6 +434,52 @@ async def ads_final(message: Message, state: FSMContext):
 
     await state.clear()
 
+@router.message(Command("send_to_all_groups"))
+async def start_send_to_all_GroupMsg(message: Message, state: FSMContext):
+    await state.set_state(GroupMsg.img)
+    await message.answer("send your img🖼️")
+
+
+@router.message(GroupMsg.img)
+async def ads_img_GroupMsg(message: Message, state: FSMContext):
+    photo_data = { "photo": message.photo }  # Ensure it's in dictionary format
+    await state.update_data(img=message.photo[-1].file_id)
+    await state.set_state(GroupMsg.txt)
+    await message.answer("send your text🗄️")
+
+@router.message(GroupMsg.txt)
+async def ads_txtGroupMsg(message: Message, state: FSMContext):
+    await state.update_data(txt=message.text)
+    await state.set_state(GroupMsg.inline_link_name)
+    await message.answer("send your inline_link name📛")
+
+@router.message(GroupMsg.inline_link_name)
+async def ads_lk_nameGroupMsg(message: Message, state: FSMContext):
+    await state.update_data(inline_link_name=message.text)
+    await state.set_state(GroupMsg.inline_link_link)
+    await message.answer("send your inline_link LINK🔗")
+
+@router.message(GroupMsg.inline_link_link)
+async def ads_finalGroupMsg(message: Message, state: FSMContext):
+    await state.update_data(inline_link_link=message.text)
+    data = await state.get_data()
+    new_inline_kb = kb.create_markap_kb(name=data['inline_link_name'], url=data['inline_link_link'])
+    if new_inline_kb == None:
+        for user in await rq.get_all_groups_ids():
+            if data['img']:
+                await bot.send_photo(chat_id=user, photo=data['img'],caption=data['txt'])
+            elif data['audio']:
+                await bot.send_voice(chat_id=user, voice=data['audio'], caption=data["txt"])
+
+    else:
+        for user in await rq.get_all_groups_ids():
+            if data['img']:
+                await bot.send_photo(chat_id=user, photo=data['img'],caption=data['txt'], reply_markup=new_inline_kb)
+            elif data['audio']:
+                await bot.send_voice(chat_id=user, voice=data['audio'], caption=data["txt"], reply_markup=new_inline_kb)
+
+
+    await state.clear()
 
 @router.message(Gen.wait)
 async def stop_flood(message: Message):
