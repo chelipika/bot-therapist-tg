@@ -1,6 +1,5 @@
 # 🤖 Noor AI Chatbot
 
-<img src="/api/placeholder/800/200" alt="Noor AI Banner" />
 
 A sophisticated Telegram bot that serves as your personal AI therapist, powered by Google's Gemini API. With features like voice interactions, multi-language support, and customizable personalities, Noor creates a unique and engaging therapeutic experience.
 
@@ -102,6 +101,3 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## 📄 License
 This project is licensed under the MIT License - see the LICENSE file for details.
-
----
-Made with ❤️ by [Your Name/Organization]
