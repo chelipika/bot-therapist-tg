@@ -214,7 +214,7 @@ class UserLimitManager:
 os.environ["GENAI_API_ENDPOINT"] = "us-central1-genai.googleapis.com"
 genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel(
-    model_name="gemini-1.5-flash",
+    model_name="gemini-2.5-flash",
     system_instruction=INSTRUCTIONS_OF_AI
 )
 
@@ -822,3 +822,4 @@ async def the_text(message: Message, state: FSMContext):
 
     await sent_message.edit_text(x, parse_mode="HTMl")
     await state.clear()
+
