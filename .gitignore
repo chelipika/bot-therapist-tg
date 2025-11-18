@@ -178,3 +178,4 @@ chat_history.json
 .idea
 .github
 db.sqlite3
+config.py
