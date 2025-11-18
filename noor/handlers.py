@@ -20,6 +20,8 @@ from noor.instructions import INSTRUCTIONS_OF_AI, greeting, voices_text
 bot = Bot(token=TOKEN)
 import noor.keyboards as kb
 # File to store chat history
+MANDOTARY_SUBSCRIPTION = False
+
 CHAT_HISTORY_FILE = "chat_history.json"
 USER_PROFILE_FILE = "user_profile.json"
 VOICE_SETTINGS_FILE = "voice_settings.json"
@@ -90,20 +92,26 @@ def save_chat_history():
     with open(CHAT_HISTORY_FILE, "w") as f:
         json.dump(user_chat_histories, f, indent=4)
 async def sub_chek(user_id):
-    if user_id in pending_requests or await is_subscribed(user_id=user_id):
-        return True
+    if MANDOTARY_SUBSCRIPTION:
+        if user_id in pending_requests or await is_subscribed(user_id=user_id):
+            return True
+        else:
+            return False
     else:
-        return False
+        return True
 
 
 async def is_subscribed(user_id: int) -> bool:
-    try:
-        member = await bot.get_chat_member(chat_id=CHANNEL_ID, user_id=user_id)
-        return member.status in ("member", "administrator", "creator")
-    except Exception:
-        return False
+    if MANDOTARY_SUBSCRIPTION:
+        try:
+            member = await bot.get_chat_member(chat_id=CHANNEL_ID, user_id=user_id)
+            return member.status in ("member", "administrator", "creator")
+        except Exception:
+            return False
+    else:
+        return True
     
-async def generate_the_content(text: str, userid: int):
+async def generate_the_content(text: str, userid: int,message: Message):
     # Ensure user history exists
     if userid not in user_chat_histories:
         user_chat_histories[userid] = []
@@ -115,8 +123,18 @@ async def generate_the_content(text: str, userid: int):
     })
     save_chat_history()
     chat_session = model.start_chat(history=user_chat_histories[userid])
-    response = await chat_session.send_message_async(text)
-    response_text = response.text
+    # Correct spelling every time!
+    x = await message.answer("▫️ Thinking...")
+    response = await chat_session.send_message_async(text, stream=True)
+    full_text = ""
+    async for chunk in response:
+        if chunk.text:
+            full_text += chunk.text
+            await x.edit_text(full_text)
+
+    # Final message without blinking cursor
+    await x.edit_text(full_text, parse_mode="HTML")
+    response_text = full_text
 
     # Save AI response to history
     user_chat_histories[userid].append({
@@ -816,10 +834,10 @@ async def the_text(message: Message, state: FSMContext):
         await message.reply(f"⛔️ You've reached your daily limit. Limits reset at: {reset_time_str} \n ⛔️ Вы использовали все сегодняшние попытки. Лимит перезагрузится в: {reset_time_str} \nyou can buy additional limits by running '/fund'")
         return
 
-    sent_message = await message.answer("Doing something important, probably...\n Веду глубокую беседу со своими мозгами ", parse_mode="HTMl")
+    # sent_message = await message.answer("Doing something important, probably...\n Веду глубокую беседу со своими мозгами ", parse_mode="HTMl")
 
-    x = await generate_the_content(message.text,user_id)
+    x = await generate_the_content(message.text,user_id,message)
 
-    await sent_message.edit_text(x, parse_mode="HTMl")
+    # await sent_message.edit_text(x, parse_mode="HTMl")
     await state.clear()
 
