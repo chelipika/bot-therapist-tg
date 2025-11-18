@@ -169,3 +169,12 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+
+
+#new ones
+user_limits.json
+chat_history.json
+.idea
+.github
+db.sqlite3
