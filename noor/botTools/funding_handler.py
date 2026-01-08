@@ -3,6 +3,8 @@ from aiogram.types import Query, CallbackQuery, FSInputFile, ChatJoinRequest
 from aiogram.types import Message, LabeledPrice, PreCheckout
 from aiogram.filters import CommandStart, Command, CommandObject
 from aiogram import Router
+from aiogram.types import PreCheckoutQuery
+
 
 from noor.botClasses import Gen
 from noor.botTools.subscription import sub_chek
