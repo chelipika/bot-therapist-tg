@@ -3,6 +3,11 @@
 
 A sophisticated Telegram bot that serves as your personal AI therapist, powered by Google's Gemini API. With features like voice interactions, multi-language support, and customizable personalities, Noor creates a unique and engaging therapeutic experience.
 
+## TODO
+remove chat history json method, use gemini built in function instead
+move all json files to db[user profile, voice settings, user limit]
+
+
 ## ✨ Features
 
 ### Core Capabilities
