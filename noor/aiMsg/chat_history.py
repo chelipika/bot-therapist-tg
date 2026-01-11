@@ -1,7 +1,6 @@
 import os
 import json
-from aiogram import Router
-from aiogram.types import Query, CallbackQuery, FSInputFile, Message
+from aiogram.types import CallbackQuery, FSInputFile, Message
 from aiogram.filters import CommandStart, Command, CommandObject
 from aiogram import F, Bot
 from aiogram.exceptions import TelegramBadRequest
@@ -10,8 +9,10 @@ from aiogram.exceptions import TelegramBadRequest
 from config import CHAT_HISTORY_FILE, USER_PROFILE_FILE, ALL_USERS_DB
 import noor.keyboards as kb
 
+from aiogram import Router
 
-router = Router()
+ChatHistoryRouter = Router()
+
 
 
 # Load existing chat history from the file
@@ -40,9 +41,11 @@ user_chat_histories = load_chat_history()
 def save_chat_history():
     with open(CHAT_HISTORY_FILE, "w") as f:
         json.dump(user_chat_histories, f, indent=4)
+# Ensure dictionary format
+if not isinstance(user_chat_histories, dict):
+    user_chat_histories = {}
 
-
-@router.message(Command('history'))
+@ChatHistoryRouter.message(Command('history'))
 async def user_history(message: Message):
     user_id = str(message.from_user.id)
     
@@ -58,7 +61,7 @@ async def user_history(message: Message):
     await message.answer(f"📜 Chat History/История чата:\n\n{history_text}")
 
 
-@router.callback_query(F.data == 'history_callback')
+@ChatHistoryRouter.callback_query(F.data == 'history_callback')
 async def history_callback(callback: CallbackQuery):
     try:
         await callback.answer("History: show")
@@ -82,7 +85,7 @@ async def history_callback(callback: CallbackQuery):
 
 
 
-@router.callback_query(F.data == "send_as_file_history")
+@ChatHistoryRouter.callback_query(F.data == "send_as_file_history")
 async def send_as_file_history(callback: CallbackQuery):
     await callback.answer("Proccesing...")
     user_id = str(callback.from_user.id)

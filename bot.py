@@ -3,7 +3,6 @@ from config import TOKEN
 from aiogram import Bot, Dispatcher
 from noor.handlers import router
 from database.models import async_main
-
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 

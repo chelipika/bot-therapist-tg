@@ -1,8 +1,9 @@
-from aiogram import F, Bot
-from aiogram.types import Query, CallbackQuery, FSInputFile, ChatJoinRequest
-from aiogram.types import Message, LabeledPrice, PreCheckout
-from aiogram.filters import CommandStart, Command, CommandObject
+from aiogram import Bot
 from aiogram import Router
+from aiogram import F
+from aiogram.types import CallbackQuery
+from aiogram.types import Message, LabeledPrice
+from aiogram.filters import Command
 from aiogram.types import PreCheckoutQuery
 
 
@@ -12,11 +13,10 @@ from config import limit_manager, TOKEN, CHANNEL_LINK
 import noor.keyboards as kb
 from noor.instructions import greeting
 
-router = Router()
 bot = Bot(token=TOKEN)
+FundingRouter = Router()
 
-
-@router.callback_query(F.data == "fundup")
+@FundingRouter.callback_query(F.data == "fundup")
 async def fundup(callback: CallbackQuery):
     await callback.answer("Proccesing...")
     await callback.message.answer_invoice(
@@ -29,7 +29,7 @@ async def fundup(callback: CallbackQuery):
 
 
 
-@router.callback_query(F.data == 'fund_up_audio')
+@FundingRouter.callback_query(F.data == 'fund_up_audio')
 async def fund_the_audio(callback: CallbackQuery):
     await callback.answer("Proccesing...")
     await callback.message.answer_invoice(
@@ -39,19 +39,19 @@ async def fund_the_audio(callback: CallbackQuery):
         currency="XTR",
         prices=[LabeledPrice(label="XTR", amount=1)]
     )
-@router.callback_query(F.data == "back")
+@FundingRouter.callback_query(F.data == "back")
 async def back(callback: CallbackQuery):
     await callback.message.edit_text(greeting, reply_markup=kb.settings)
 
 
 
-@router.message(Gen.wait)
+@FundingRouter.message(Gen.wait)
 async def stop_flood(message: Message):
     await message.answer("Wait one requests at a time \nПодождите ваш запрос генерируется.")
 
 
 
-@router.message(Command('fund'))
+@FundingRouter.message(Command('fund'))
 async def start_fund(message: Message):
     if not await sub_chek(message.from_user.id):
         await message.answer(f"Subscribe first, Подпишитесь: \n{CHANNEL_LINK}", reply_markup=kb.subscribe_channel)
@@ -64,7 +64,7 @@ async def start_fund(message: Message):
         prices=[LabeledPrice(label="XTR", amount=1)]
     )
 
-@router.pre_checkout_query()
+@FundingRouter.pre_checkout_query()
 async def pre_checkout_handler(event: PreCheckoutQuery):
     await event.answer(True)
 
@@ -72,7 +72,7 @@ async def pre_checkout_handler(event: PreCheckoutQuery):
 
 
 
-@router.message(F.successful_payment.invoice_payload == "fundup_limits")
+@FundingRouter.message(F.successful_payment.invoice_payload == "fundup_limits")
 async def successful_payment(message: Message):
     user_id = str(message.from_user.id)
     await bot.refund_star_payment(message.from_user.id, message.successful_payment.telegram_payment_charge_id) # for testing purposes \ it will refund the stars a.k.a it will give your stars(money) back, use it for test purposes
@@ -82,7 +82,7 @@ async def successful_payment(message: Message):
 
     await message.answer("Your stuff has been updated😍\n Ваши материалы обновлены😍", reply_markup=kb.back_to_main)
 ###
-@router.message(F.successful_payment.invoice_payload == "fundup_audio_limits")
+@FundingRouter.message(F.successful_payment.invoice_payload == "fundup_audio_limits")
 async def successful_payment_audio(message: Message):
     user_id = str(message.from_user.id)
     await bot.refund_star_payment(message.from_user.id, message.successful_payment.telegram_payment_charge_id) # for testing purposes \ it will refund the stars a.k.a it will give your stars(money) back, use it for test purposes

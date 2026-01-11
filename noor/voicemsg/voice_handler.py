@@ -2,17 +2,21 @@ import os
 import aiofiles
 import json
 
+
+from aiogram import Bot
 from aiogram import Router
-from aiogram.types import Message, LabeledPrice, PreCheckout, CallbackQuery
+from aiogram.types import Message, LabeledPrice, CallbackQuery
 from aiogram.filters import Command, CommandObject
 from aiogram import F
 
 
-from config import VOICE_SETTINGS_FILE
-from instructions import voices_text
+from config import VOICE_SETTINGS_FILE, TOKEN
+from noor.instructions import voices_text
 import noor.keyboards as kb
 
-router = Router()
+
+bot = Bot(token=TOKEN)
+VoiceHandlerRouter = Router()
 
 
 
@@ -32,7 +36,7 @@ async def save_voice_settings(voice_id):
         print(f"Error saving voice settings: {e}")
 
 
-@router.message(Command("audio_plan"))
+@VoiceHandlerRouter.message(Command("audio_plan"))
 async def audio_plan(message: Message):
     await message.answer_invoice(
         title="Extending limits for audio/Расширить лимиты для аудио",
@@ -42,30 +46,30 @@ async def audio_plan(message: Message):
         prices=[LabeledPrice(label="XTR", amount=1)]
     )
 
-@router.callback_query(F.data == "voice_change")
+@VoiceHandlerRouter.callback_query(F.data == "voice_change")
 async def audio_voice_change(callback: CallbackQuery):
     await callback.answer("Proccesing...")
     await callback.message.edit_text(voices_text, reply_markup=kb.aviable_voices)
 
 
-@router.callback_query(F.data == "Joseph_change_voice")
+@VoiceHandlerRouter.callback_query(F.data == "Joseph_change_voice")
 async def Joseph_change_voice(callback: CallbackQuery):
     VOICE_ID = "Zlb1dXrM653N07WRdFW3"
     await save_voice_settings(VOICE_ID)
     await callback.answer("The voice has been changed... ✌️")    
-@router.callback_query(F.data == "Liam_change_voice")
+@VoiceHandlerRouter.callback_query(F.data == "Liam_change_voice")
 async def Liam_change_voice(callback: CallbackQuery):
     VOICE_ID = "TX3LPaxmHKxFdv7VOQHJ"
     await save_voice_settings(VOICE_ID)
     await callback.answer("The voice has been changed...✌️")
 
-@router.callback_query(F.data == "Domi_change_voice")
+@VoiceHandlerRouter.callback_query(F.data == "Domi_change_voice")
 async def Domi_change_voice(callback: CallbackQuery):
     VOICE_ID = "AZnzlk1XvdvUeBnXmlld"
     await save_voice_settings(VOICE_ID)
     await callback.answer("The voice has been changed...✌️")
 
-@router.callback_query(F.data == "Rachel_change_voice")
+@VoiceHandlerRouter.callback_query(F.data == "Rachel_change_voice")
 async def Joseph_change_voice(callback: CallbackQuery):
     VOICE_ID = "21m00Tcm4TlvDq8ikWAM"
     await save_voice_settings(VOICE_ID)

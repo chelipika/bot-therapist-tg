@@ -1,14 +1,16 @@
 from config import MANDOTARY_SUBSCRIPTION, CHANNEL_ID, TOKEN
-from aiogram import Bot, F
+from aiogram import F, Bot
 from aiogram.types import ChatJoinRequest, CallbackQuery
 from aiogram import Router
-router = Router()
 
 bot = Bot(token=TOKEN)
+subscribtion_router = Router() 
+
+
 pending_requests = set()
 
 
-@router.chat_join_request()
+@subscribtion_router.chat_join_request()
 async def handle_join_request(update: ChatJoinRequest):
     pending_requests.add(update.from_user.id)
     # Optionally notify admins or log the request
@@ -35,7 +37,7 @@ async def is_subscribed(user_id: int) -> bool:
         return True
     
 
-@router.callback_query(F.data == "subchek")
+@subscribtion_router.callback_query(F.data == "subchek")
 async def subchek(callback: CallbackQuery):
     if not await sub_chek(callback.from_user.id):
         await callback.answer("Your not subscribed yet",)

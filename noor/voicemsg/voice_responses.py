@@ -2,28 +2,30 @@ import os
 import whisper
 import requests
 
-from aiogram import F, Bot
+from aiogram import Bot
 from aiogram import Router
+from aiogram import F
 from aiogram.filters import CommandStart, Command, CommandObject
-from aiogram.types import Message, LabeledPrice, PreCheckout
+from aiogram.types import Message, LabeledPrice
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Query, CallbackQuery, FSInputFile, ChatJoinRequest
+from aiogram.types import CallbackQuery, FSInputFile, ChatJoinRequest
 
 from noor.botClasses import Gen
 from noor.botTools.subscription import sub_chek
-from noor.botTools.userLitmitMNG import limi
 from noor.voicemsg.voice_handler import load_voice_settings
 from noor.aiMsg.responseGenerator import generate_the_content
 from config import ELEVENLABS_API_KEY, limit_manager, TOKEN, CHANNEL_LINK
 import noor.keyboards as kb
 
 
-router = Router()
+
 bot = Bot(token=TOKEN)
+VoiceRouter = Router()
 
 
 
-@router.message(F.voice)
+
+@VoiceRouter.message(F.voice)
 async def handle_audio(message: Message, state: FSMContext):
     if not await sub_chek(message.from_user.id):
         await message.answer(f"Subscribe first, Подпишитесь: \n{CHANNEL_LINK}", reply_markup=kb.subscribe_channel)
@@ -96,7 +98,7 @@ async def handle_audio(message: Message, state: FSMContext):
         await message.answer("Error: audio api has reached it's limits \n come back next month or donate")
     await state.clear()
 
-@router.message(Command(commands=["au", "audio"])) #/au how to fix my pose
+@VoiceRouter.message(Command(commands=["au", "audio"])) #/au how to fix my pose
 async def audio_respone(message: Message, command: CommandObject,  state: FSMContext):
     if not await sub_chek(message.from_user.id):
         await message.answer(f"Subscribe first, Подпишитесь: \n{CHANNEL_LINK}", reply_markup=kb.subscribe_channel)
